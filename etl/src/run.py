@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import json
 import logging.config
 import os
 
@@ -17,15 +16,11 @@ for idx, feed_url in enumerate(feed_urls):
     logging.info(f"Processing {feed_url}")
 
     feed = feeder.read(feed_url)
-    if feed is None:
-        logging.warning(f"Was not able to read RSS feed {feed_url}")
+    if not feed.successful:
+        logging.warning(f"Failed to read RSS feed {feed_url}")
         continue
 
     logging.info(f"Got fresh data for {feed_url}")
-
-    print(f"Feed title: {feed['feed']['title']}")
-    for entry in feed["entries"]:
-        print(f"Feed entry: {entry['title']}")
 
     out_file_path = f"data/out/{idx}.json"
 
@@ -34,5 +29,7 @@ for idx, feed_url in enumerate(feed_urls):
         os.makedirs(out_dir_path, exist_ok=True)
 
     with open(out_file_path, "w") as out_file:
-        feed_json = json.dumps(feed, indent=4)
+        feed_json = str(feed)
+        print(feed_json)
+
         out_file.write(feed_json)
