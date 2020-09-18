@@ -33,6 +33,7 @@ class DataConfig(object):
 class PersistenceConfig(object):
     def __init__(self, config):
         self.feed_urls_file_path = config.get("persistence.feed_urls_file_path")
+        self.results_dir_path = config.get("persistence.results_dir_path")
 
 
 class FeederConfig(object):
