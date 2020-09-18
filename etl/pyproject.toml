@@ -6,6 +6,9 @@ authors = ["sarastinishi <sarasti.nishi@protonmail.ch>"]
 
 [tool.poetry.dependencies]
 python = "^3.6"
+colorlog = "4.2.1"
+feedparser = "6.0.1"
+requests = "2.24.0"
 
 [tool.poetry.dev-dependencies]
 
