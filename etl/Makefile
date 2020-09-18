@@ -18,6 +18,8 @@ init: ## Initialize virtual environment
 shell: ## Run python shell
 	$(PYTHON_DEV_SHELL) python
 
+run: ## Launch aggregator
+	$(PYTHON_DEV_SHELL) python src/run.py
 
 test: ## Run automatic tests
 	$(PYTHON_TEST_SHELL) python -m unittest discover -v
