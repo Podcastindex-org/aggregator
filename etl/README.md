@@ -1,8 +1,9 @@
 # Podcastindex aggregator ETL
 
-A simple prototype to illustrate how Python/Kubernetes based stack can be used to organise data processing infrastructure.
+Extract, transform, load (ETL) components of podcastindex aggregator. 
+Implement baseline functions for reading and persisting RSS feeds' metadata. 
 
 ## Prerequisites
 1. Linux (tested with Ubuntu 18.04)
-2. Python 3.6 or higher, Pip3.
+2. python 3.6 or higher, pip3.
 3. make
