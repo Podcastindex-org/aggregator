@@ -32,6 +32,9 @@ build: ## Build Docker images
 	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini --directory-prefix=docker/database/bin
 	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini.asc --directory-prefix=docker/database/bin
 	-wget -nc https://ftp.postgresql.org/pub/source/v12.3/postgresql-12.3.tar.bz2 --directory-prefix=docker/database/bin
+	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini --directory-prefix=docker/bus/bin
+	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini.asc --directory-prefix=docker/bus/bin
+	-wget -nc http://apache.mirror.amaze.com.au/kafka/2.5.0/kafka_2.12-2.5.0.tgz --directory-prefix=docker/bus/bin
 	# building images
 	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml build
 

@@ -23,6 +23,17 @@ services:
     networks:
       - podcastindex
 
+  bus:
+    container_name: bus
+    build:
+      context: bus
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - 9092:9092
+    networks:
+      - podcastindex
+
 networks:
   podcastindex:
     driver: bridge
