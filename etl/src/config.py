@@ -22,6 +22,7 @@ class Config(object):
         self.data = DataConfig(config)
         self.persistence = PersistenceConfig(config)
         self.feeder = FeederConfig(config)
+        self.tasks = TasksConfig(config)
 
 
 class DataConfig(object):
@@ -32,10 +33,26 @@ class DataConfig(object):
 
 class PersistenceConfig(object):
     def __init__(self, config):
-        self.feed_urls_file_path = config.get("persistence.feed_urls_file_path")
-        self.results_dir_path = config.get("persistence.results_dir_path")
+        self.migrations = MigrationsConfig(config)
+        self.credentials_file_path = config.get("persistence.credentials_file_path")
+
+
+class MigrationsConfig(object):
+    def __init__(self, config):
+        self.migrations_dir = config.get("persistence.migrations.migrations_dir")
 
 
 class FeederConfig(object):
     def __init__(self, config):
         self.timeout_seconds = config.get("feeder.timeout_seconds")
+
+
+class TasksConfig(object):
+    def __init__(self, config):
+        self.import_feeds = ImportFeedsTaskConfig(config)
+
+
+class ImportFeedsTaskConfig(object):
+    def __init__(self, config):
+        self.truncate = config.get("tasks.import_feeds.truncate")
+        self.feeds_file_path = config.get("tasks.import_feeds.feeds_file_path")

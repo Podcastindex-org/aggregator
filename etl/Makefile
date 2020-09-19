@@ -3,8 +3,9 @@ PROJECT_ID := podcastindex
 SRC_PATH := $(shell pwd)/src:${PYTHONPATH}
 
 PYTHON_DEV_SHELL := PYTHONPATH=$(SRC_PATH) poetry run
+ALEMBIC_SHELL := PYTHONPATH=$(SRC_PATH) poetry run alembic
 
-.PHONY: help init shell test flake8
+.PHONY: help init shell revision build up run test flake8
 
 help:
 	@cat $(MAKEFILE_LIST)\
@@ -18,8 +19,31 @@ init: ## Initialize virtual environment
 shell: ## Run python shell
 	$(PYTHON_DEV_SHELL) python
 
-run: ## Launch aggregator
-	$(PYTHON_DEV_SHELL) python src/run.py
+revision: ## Create Alembic database revision (requires name parameter to be initialized)
+	@[ "${name}" ] || ( echo "Revision name is not set"; exit 1 )
+	echo "Creating new Alembic database revision $(name)"
+	$(ALEMBIC_SHELL) revision -m $(name)
+
+build: ## Build Docker images
+	docker build -t $(PROJECT_ID)/db -f docker/db/Dockerfile docker/db
+
+up: ## Provision local Docker cluster
+	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml up --build -d
+
+down: ## Tear down local Docker cluster
+	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml down
+
+ensure-db: ## Create or upgrade a database instance
+	$(PYTHON_DEV_SHELL) python src/tasks/ensure_db.py
+
+drop-db: ## Create or upgrade a database instance
+	$(PYTHON_DEV_SHELL) python src/tasks/drop_db.py
+
+import-feeds: ## Import feed urls from json file to a database
+	$(PYTHON_DEV_SHELL) python src/tasks/import_feeds.py
+
+run-aggregator: ## Launch RSS feed crawler and parser
+	$(PYTHON_DEV_SHELL) python src/tasks/run_aggregator.py
 
 test: ## Run automatic tests
 	$(PYTHON_TEST_SHELL) python -m unittest discover -v

@@ -1,0 +1,17 @@
+version: "3"
+
+services:
+  db:
+    container_name: db
+    build:
+      context: db
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - 5432:5432
+    networks:
+      - podcastindex
+
+networks:
+  podcastindex:
+    driver: bridge
