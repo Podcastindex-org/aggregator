@@ -16,7 +16,7 @@ def execute(sql, op, split: str = False, split_char: str = ";"):
 
 def upgrade(revision, op):
     config = Config()
-    migrations_dir = config.persistence.migrations.migrations_dir
+    migrations_dir = config.persistence.repository.migrations.migrations_dir
     migration_path = os.path.join(migrations_dir, f"{revision}_upgrade.sql")
 
     with open(migration_path) as migrations_file:
@@ -26,7 +26,7 @@ def upgrade(revision, op):
 
 def downgrade(revision, op):
     config = Config()
-    migrations_dir = config.persistence.migrations.migrations_dir
+    migrations_dir = config.persistence.repository.migrations.migrations_dir
     migration_path = os.path.join(migrations_dir, f"{revision}_downgrade.sql")
 
     with open(migration_path) as migration_file:

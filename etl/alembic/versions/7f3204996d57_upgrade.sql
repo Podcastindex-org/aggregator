@@ -32,7 +32,7 @@ create table if not exists podcastindex.episode(
 create table if not exists podcastindex.feed_reading_result(
     id bigserial primary key,
     feed_id bigint not null,
-    response text null,
+    content_key varchar(256) null,
     successful boolean not null,
     message varchar(1024) null,
 

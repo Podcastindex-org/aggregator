@@ -10,8 +10,6 @@ ENV PG_MAJOR 12
 ENV PG_VERSION 12.3
 ENV PG_SHA256 94ed64a6179048190695c86ec707cc25d016056ce10fc9d229267d9a8f1dcf41
 
-ENV TINI_VERSION v0.19.0
-
 
 RUN set -eux; \
 	addgroup -g 70 -S postgres; \
@@ -21,6 +19,8 @@ RUN set -eux; \
 
 RUN mkdir /docker-entrypoint-initdb.d
 
+COPY bin/postgresql-12.3.tar.bz2 /tmp/postgresql.tar.bz2
+
 RUN set -ex \
 	\
 	&& apk add --no-cache --virtual .fetch-deps \
@@ -28,15 +28,13 @@ RUN set -ex \
 		openssl \
 		tar \
 	\
-	&& wget -O postgresql.tar.bz2 "https://ftp.postgresql.org/pub/source/v$PG_VERSION/postgresql-$PG_VERSION.tar.bz2" \
-	&& echo "$PG_SHA256 *postgresql.tar.bz2" | sha256sum -c - \
 	&& mkdir -p /usr/src/postgresql \
 	&& tar \
 		--extract \
-		--file postgresql.tar.bz2 \
+		--file /tmp/postgresql.tar.bz2 \
 		--directory /usr/src/postgresql \
 		--strip-components 1 \
-	&& rm postgresql.tar.bz2 \
+	&& rm /tmp/postgresql.tar.bz2 \
 	\
 	&& apk add --no-cache --virtual .build-deps \
 		bison \
@@ -115,8 +113,8 @@ RUN mkdir -p /var/run/postgresql && chown -R postgres:postgres /var/run/postgres
 RUN mkdir -p "$PGDATA" && chown -R postgres:postgres "$PGDATA" && chmod 777 "$PGDATA"
 VOLUME /var/lib/postgresql/data
 
-ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
-ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini.asc /tini.asc
+COPY bin/tini /tini
+COPY bin/tini.asc /tini.asc
 RUN apk add --no-cache tini
 
 ENTRYPOINT ["/sbin/tini", "--"]

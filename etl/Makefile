@@ -25,10 +25,18 @@ revision: ## Create Alembic database revision (requires name parameter to be ini
 	$(ALEMBIC_SHELL) revision -m $(name)
 
 build: ## Build Docker images
-	docker build -t $(PROJECT_ID)/db -f docker/db/Dockerfile docker/db
+	# downloading binaries here as opposed to a Dockerfile to speed up subsequent image builds
+	-wget -nc https://dl.min.io/server/minio/release/linux-amd64/minio --directory-prefix=docker/blockstorage/bin
+	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini --directory-prefix=docker/blockstorage/bin
+	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini.asc --directory-prefix=docker/blockstorage/bin
+	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini --directory-prefix=docker/database/bin
+	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini.asc --directory-prefix=docker/database/bin
+	-wget -nc https://ftp.postgresql.org/pub/source/v12.3/postgresql-12.3.tar.bz2 --directory-prefix=docker/database/bin
+	# building images
+	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml build
 
 up: ## Provision local Docker cluster
-	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml up --build -d
+	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml up -d
 
 down: ## Tear down local Docker cluster
 	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml down

@@ -1,4 +1,5 @@
 import re
+import uuid
 from typing import Optional, Any, Dict, List
 
 import feedparser
@@ -65,30 +66,46 @@ class FeedReadingResult(Model):
     def table_name(cls) -> str:
         return "feed_reading_result"
 
-    def __init__(self, feed_id: int, response: Optional[str], successful: bool, message: Optional[str]):
+    def __init__(self, feed_id: int, content_key: Optional[str], successful: bool, message: Optional[str]):
         super(FeedReadingResult, self).__init__(id=None)
 
         self.feed_id = feed_id
-        self.response = response
+        self.content_key = content_key or str(uuid.uuid4())
         self.successful = successful
         self.message = message
 
 
 class SuccessfulFeedReadingResult(FeedReadingResult):
-    def __init__(self, feed_id: int, response: Optional[str], message: Optional[str] = None):
+    def __init__(self, feed_id: int):
         super().__init__(
             feed_id,
-            response,
+            content_key=None,
             successful=True,
+            message=None
+        )
+
+
+class FailedFeedReadingResult(FeedReadingResult):
+    def __init__(self, feed_id: int, message: Optional[str] = "Unknown error"):
+        super().__init__(
+            feed_id,
+            content_key=None,
+            successful=False,
             message=message
         )
 
+
+class FeedContent(object):
+    def __init__(self, feed_id: int, content: str):
+        self._feed_id = feed_id
+        self._content = content
+
     @property
     def channel(self) -> Channel:
-        feed_dict = feedparser.parse(self.response)
+        feed_dict = feedparser.parse(self._content)
 
         channel = Channel(
-            feed_id=self.feed_id,
+            feed_id=self._feed_id,
             title=feed_dict["feed"]["title"]
         )
 
@@ -96,7 +113,7 @@ class SuccessfulFeedReadingResult(FeedReadingResult):
 
     @property
     def episodes(self) -> List[Episode]:
-        feed_dict = feedparser.parse(self.response)
+        feed_dict = feedparser.parse(self._content)
 
         episodes = []
         for entry in feed_dict["entries"]:
@@ -108,13 +125,3 @@ class SuccessfulFeedReadingResult(FeedReadingResult):
             episodes.append(episode)
 
         return episodes
-
-
-class FailedFeedReadingResult(FeedReadingResult):
-    def __init__(self, feed_id: int, response: Optional[str], message: Optional[str] = "Unknown error"):
-        super().__init__(
-            feed_id,
-            response,
-            successful=False,
-            message=message
-        )

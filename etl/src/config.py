@@ -21,7 +21,7 @@ class Config(object):
 
         self.data = DataConfig(config)
         self.persistence = PersistenceConfig(config)
-        self.feeder = FeederConfig(config)
+        self.feed_reader = FeedReaderConfig(config)
         self.tasks = TasksConfig(config)
 
 
@@ -33,18 +33,30 @@ class DataConfig(object):
 
 class PersistenceConfig(object):
     def __init__(self, config):
+        self.repository = RepositoryConfig(config)
+        self.block_storage = BlockStorageConfig(config)
+
+
+class RepositoryConfig(object):
+    def __init__(self, config):
         self.migrations = MigrationsConfig(config)
-        self.credentials_file_path = config.get("persistence.credentials_file_path")
+        self.credentials_file_path = config.get("persistence.repository.credentials_file_path")
 
 
 class MigrationsConfig(object):
     def __init__(self, config):
-        self.migrations_dir = config.get("persistence.migrations.migrations_dir")
+        self.migrations_dir = config.get("persistence.repository.migrations.migrations_dir")
 
 
-class FeederConfig(object):
+class BlockStorageConfig(object):
     def __init__(self, config):
-        self.timeout_seconds = config.get("feeder.timeout_seconds")
+        self.bucket_name = config.get("persistence.block_storage.bucket_name")
+        self.credentials_file_path = config.get("persistence.block_storage.credentials_file_path")
+
+
+class FeedReaderConfig(object):
+    def __init__(self, config):
+        self.timeout_seconds = config.get("feed_reader.timeout_seconds")
 
 
 class TasksConfig(object):
