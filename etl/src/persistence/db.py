@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, List, Tuple, Callable
+from typing import List, Tuple, Callable
 
 import pandas as pd
 from pandas import DataFrame
@@ -85,7 +85,7 @@ class Db(object):
 
             return int(num)
         except Exception:
-            logging.exception(f"There was an issue counting number with custom SQL query")
+            logging.exception("There was an issue counting number with custom SQL query")
             raise
 
     def execute(self, sql: str):
@@ -94,7 +94,7 @@ class Db(object):
             connection = engine.connect()
             transaction = connection.begin()
         except Exception:
-            logging.exception(f"There was an issue starting new execute transaction")
+            logging.exception("There was an issue starting new execute transaction")
             raise
 
         try:
@@ -143,7 +143,7 @@ class Db(object):
             connection = engine.connect()
             transaction = None
         except Exception:
-            logging.error(f"There was an issue connecting to a database")
+            logging.error("There was an issue connecting to a database")
             raise
 
         try:
@@ -175,7 +175,7 @@ class Db(object):
             connection = engine.connect()
             transaction = None
         except Exception:
-            logging.error(f"There was an issue connecting to a database")
+            logging.error("There was an issue connecting to a database")
             raise
 
         try:

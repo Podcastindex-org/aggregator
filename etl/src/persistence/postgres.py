@@ -38,7 +38,7 @@ class Postgres(Db):
             connection = engine.connect()
             transaction = None
         except Exception:
-            logging.error(f"There was an issue connecting to a database")
+            logging.error("There was an issue connecting to a database")
             raise
 
         try:

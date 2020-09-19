@@ -5,7 +5,7 @@ SRC_PATH := $(shell pwd)/src:${PYTHONPATH}
 PYTHON_DEV_SHELL := PYTHONPATH=$(SRC_PATH) poetry run
 ALEMBIC_SHELL := PYTHONPATH=$(SRC_PATH) poetry run alembic
 
-.PHONY: help init shell revision build up run test flake8
+.PHONY: help init shell revision build up down ensure-db drop-db import-feeds run-aggregator test flake8
 
 help:
 	@cat $(MAKEFILE_LIST)\
