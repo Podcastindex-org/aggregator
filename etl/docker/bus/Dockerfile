@@ -1,42 +1,37 @@
-FROM alpine:3.12
+FROM openjdk:8u212-jre-alpine
 
 ENV KAFKA_VERSION 2.5.0
 ENV SCALA_VERSION 2.12
+ENV KAFKA_NAME kafka_${SCALA_VERSION}-${KAFKA_VERSION}
+ENV KAFKA_HOME /opt/kafka
+ENV PATH=${PATH}:${KAFKA_HOME}/bin
+ENV GLIBC_VERSION 2.32-r0
 
-ENV TINI_VERSION v0.19.0
+COPY scripts / /tmp/
+COPY bin/${KAFKA_NAME}.tgz /tmp/
+COPY bin/glibc-${GLIBC_VERSION}.apk /tmp/
 
-LABEL name="kafka" version=${KAFKA_VERSION}
+RUN apk add --no-cache bash curl docker \
+ && chmod a+x /tmp/*.sh \
+ && mv /tmp/start-kafka.sh /tmp/broker-list.sh /tmp/create-topics.sh /tmp/versions.sh /usr/bin \
+ && sync \
+ && tar xfz /tmp/${KAFKA_NAME}.tgz -C /opt \
+ && ln -s /opt/${KAFKA_NAME} ${KAFKA_HOME}
 
-COPY bin/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz /tmp/kafka.tgz
-
-RUN apk add --no-cache openjdk8-jre bash docker coreutils su-exec
-RUN apk add --no-cache -t .build-deps curl ca-certificates jq \
-  && mkdir -p /opt \
-  && tar -xzf /tmp/kafka.tgz -C /opt \
-  && mv /opt/kafka_${SCALA_VERSION}-${KAFKA_VERSION} /opt/kafka \
-  && adduser -DH -s /sbin/nologin kafka \
-  && chown -R kafka: /opt/kafka \
-  && rm -rf /tmp/* \
-  && apk del --purge .build-deps
-
-ENV PATH /sbin:/opt/kafka/bin/:$PATH
-
-WORKDIR /opt/kafka
-
-VOLUME ["/tmp/kafka-logs"]
-
-EXPOSE 9092 2181
+RUN apk add --no-cache --allow-untrusted /tmp/glibc-${GLIBC_VERSION}.apk \
+ && rm -r /tmp/*
 
 COPY config/log4j.properties /opt/kafka/config/
 COPY config/server.properties /opt/kafka/config/
 COPY config/zookeeper.properties /opt/kafka/config/
-COPY bin/docker-entrypoint.sh /docker-entrypoint.sh
-COPY scripts /
 
 COPY bin/tini /tini
 COPY bin/tini.asc /tini.asc
 RUN apk add --no-cache tini
 
+VOLUME ["/kafka"]
+
 ENTRYPOINT ["/sbin/tini", "--"]
 
-CMD ["/docker-entrypoint.sh", "kafka-server-start.sh", "config/server.properties"]
+# Use "exec" form so that it runs as PID 1 (useful for graceful shutdown)
+CMD ["start-kafka.sh"]

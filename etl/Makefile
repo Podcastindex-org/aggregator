@@ -35,6 +35,7 @@ build: ## Build Docker images
 	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini --directory-prefix=docker/bus/bin
 	-wget -nc https://github.com/krallin/tini/releases/download/v0.19.0/tini.asc --directory-prefix=docker/bus/bin
 	-wget -nc http://apache.mirror.amaze.com.au/kafka/2.5.0/kafka_2.12-2.5.0.tgz --directory-prefix=docker/bus/bin
+	-wget -nc https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.32-r0/glibc-2.32-r0.apk --directory-prefix=docker/bus/bin
 	# building images
 	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml build
 
@@ -55,6 +56,12 @@ import-feeds: ## Import feed urls from json file to a database
 
 run-aggregator: ## Launch RSS feed crawler and parser
 	$(PYTHON_DEV_SHELL) python src/tasks/run_aggregator.py
+
+run-scheduler: ## Run aggregation scheduler
+	$(PYTHON_DEV_SHELL) python src/tasks/run_scheduler.py
+
+run-worker: ## Run crawling and parsing worker
+	$(PYTHON_DEV_SHELL) python src/tasks/run_worker.py
 
 test: ## Run automatic tests
 	$(PYTHON_TEST_SHELL) python -m unittest discover -v
