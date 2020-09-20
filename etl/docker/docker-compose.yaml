@@ -3,6 +3,7 @@ version: "3"
 services:
   database:
     container_name: database
+    image: podcastindex/database
     build:
       context: database
       dockerfile: Dockerfile
@@ -14,6 +15,7 @@ services:
 
   blockstorage:
     container_name: blockstorage
+    image: podcastindex/blockstorage
     build:
       context: blockstorage
       dockerfile: Dockerfile
@@ -33,6 +35,7 @@ services:
 
   bus:
     container_name: bus
+    image: podcastindex/bus
     build:
       context: bus
       dockerfile: Dockerfile
@@ -49,6 +52,22 @@ services:
       KAFKA_CREATE_TOPICS: "podcastindex:1:1"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - podcastindex
+
+  scheduler:
+    container_name: scheduler
+    image: podcastindex/aggregator
+    command: ["tasks/run_scheduler.py"]
+    restart: always
+    networks:
+      - podcastindex
+
+  worker:
+    container_name: worker
+    image: podcastindex/aggregator
+    command: ["tasks/run_worker.py"]
+    restart: always
     networks:
       - podcastindex
 
