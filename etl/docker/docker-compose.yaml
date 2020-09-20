@@ -55,22 +55,6 @@ services:
     networks:
       - podcastindex
 
-  scheduler:
-    container_name: scheduler
-    image: podcastindex/aggregator
-    command: ["tasks/run_scheduler.py"]
-    restart: always
-    networks:
-      - podcastindex
-
-  worker:
-    container_name: worker
-    image: podcastindex/aggregator
-    command: ["tasks/run_worker.py"]
-    restart: always
-    networks:
-      - podcastindex
-
 networks:
   podcastindex:
     driver: bridge

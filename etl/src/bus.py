@@ -40,31 +40,41 @@ class Bus(object):
         self._topic = topic
         self._credentials = BusCredentials.read(credentials_file_path)
         self._default_encoding = "utf-8"
+        self._cached_producer = None
+        self._cached_consumer = None
 
+    @property
     def _producer(self) -> KafkaProducer:
+        if self._cached_producer is not None:
+            return self._cached_producer
+
         (address, port) = self._credentials.astuple()
-        producer = KafkaProducer(bootstrap_servers=f"{address}:{port}")
+        self._cached_producer = KafkaProducer(bootstrap_servers=f"{address}:{port}")
 
-        return producer
+        return self._cached_producer
 
+    @property
     def _consumer(self) -> KafkaConsumer:
+        if self._cached_consumer is not None:
+            return self._cached_consumer
+
         (address, port) = self._credentials.astuple()
-        consumer = KafkaConsumer(
+        self._cached_consumer = KafkaConsumer(
             self._topic,
             bootstrap_servers=f"{address}:{port}"
         )
 
-        return consumer
+        return self._cached_consumer
 
     def send(self, message: Any):
         message_bytes = dill.dumps(message)
 
-        self._producer().send(
+        self._producer.send(
             self._topic,
             message_bytes
         )
 
     def __iter__(self):
-        for message_record in self._consumer():
+        for message_record in self._consumer:
             message = dill.loads(message_record.value)
             yield message

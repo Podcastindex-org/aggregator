@@ -46,17 +46,11 @@ build: ## Build Docker images
 	-wget -nc $(GLIBC_URL) --directory-prefix=docker/bus/bin
 	-wget -nc $(TINI_URL) --directory-prefix=docker/bus/bin
 	-wget -nc $(TINIASC_URL) --directory-prefix=docker/bus/bin
-	# copy Python requirements.txt to install all Python dependencies in an aggregator containers
-	poetry export -f requirements.txt --without-hashes -o docker/aggregator/requirements.txt
-	# building images
-	docker build -t $(PROJECT_ID)/aggregator -f docker/aggregator/Dockerfile .
+	# compose
 	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml build
 
 up: ## Provision local Docker cluster
 	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml up -d
-
-up-services: ## Provision local Docker cluster with a database (Postgres), block storage (Minio) and a message bus (Kafka)
-	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml up -d database blockstorage zookeeper bus
 
 down: ## Tear down local Docker cluster
 	docker-compose -p $(PROJECT_ID) -f docker/docker-compose.yaml down

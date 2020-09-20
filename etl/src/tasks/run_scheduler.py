@@ -8,8 +8,6 @@ from config import Config
 from model import Feed
 from persistence.repository import Repository
 from tasks.base import BaseTask
-from tasks.ensure_db import EnsureDatabaseTask
-from tasks.import_feeds import ImportFeedsTask
 
 
 class RunSchedulerTask(BaseTask):
@@ -29,8 +27,5 @@ class RunSchedulerTask(BaseTask):
 
 
 if __name__ == "__main__":
-    EnsureDatabaseTask().run()
-    ImportFeedsTask().run()
-
     task = RunSchedulerTask()
     task.run()

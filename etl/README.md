@@ -39,11 +39,14 @@ Implements baseline functions for reading and persisting RSS feeds' metadata.
     ```
 
 ## Getting started
-Following commands will provision a local Docker cluster with a few auxiliary services, aggregator scheduler and worker:
+Following commands will provision a local Docker cluster with a few auxiliary services:
 1. `git clone https://github.com/sarastinishi/aggregator.git` - clone aggregator repo.
 1. `git checkout develop && cd etl` - checkout develpo branch and navigate to etl directory. 
 1. `make build` - build and provision Docker images woth Postgres DB, Minio block, Kafka message bus and an aggregator itself. Run `docker images` to see a list of created images.
 1. `make up` - provision a Docker cluster. See [docker-compose.yml](docker/docker-compose.yaml) for more details. To list running containers run `docker ps -a`
+1. `make ensure-db` - creates database.
+1. `make import-feeds` - import sample feeds from [feeds.json](data/feeds.json) 
+1. `make run-scheduler`, `make run-worker` - scheduler submits feeds for processing, worker - parses RSS feeds. 
 1. `make down` - tear down local Docker cluster.
 
 ## Main entry points
@@ -53,8 +56,8 @@ Following entrypoints can also be used outside Docker environment. Use them toge
 |ensure-db|`make ensure-db`|Create or upgrade a database instance|
 |drop-db|`make drop-db`|Create or upgrade a database instance|
 |import-feeds|`make import-feeds`|Import feed urls from json file to a database|
-|run-scheduler|`make run-aggregator`|Launch scheduler, that cycles through available RSS feeds and submits them for processing|
-|run-worker|`make run-aggregator`|Listens to a message bus and parses RSS feeds saving results to a database|
+|run-scheduler|`make run-scheduler`|Launch scheduler, that cycles through available RSS feeds and submits them for processing|
+|run-worker|`make run-worker`|Listens to a message bus and parses RSS feeds saving results to a database|
 
 ## Other terminal commands
 Run `make help` or `make` to get them.
@@ -79,6 +82,12 @@ flake8           Check basic code style conventions
 Following DB structure is just a part of a prototype and will be changes later.
 
 ![Indicative database structure](docs/db_diagram.png "Indicative database structure")
+
+## Key components
+Apache Airflow has not been introduced yet to run a scheduler.
+
+![Main components](docs/main_components.png "Main components")
+
 
 ## Known issues
 1. When running `make ensure-db` for the first time expected exception is printed. It can be safely ignored.
