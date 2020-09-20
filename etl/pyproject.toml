@@ -17,6 +17,7 @@ alembic = "1.4.3"
 psycopg2-binary = "2.8.6"
 minio = "6.0.0"
 dill = "0.3.2"
+kafka-python = "2.0.1"
 
 [tool.poetry.dev-dependencies]
 

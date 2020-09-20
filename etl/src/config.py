@@ -22,6 +22,7 @@ class Config(object):
         self.data = DataConfig(config)
         self.persistence = PersistenceConfig(config)
         self.feed_reader = FeedReaderConfig(config)
+        self.bus = BusConfig(config)
         self.tasks = TasksConfig(config)
 
 
@@ -59,12 +60,30 @@ class FeedReaderConfig(object):
         self.timeout_seconds = config.get("feed_reader.timeout_seconds")
 
 
+class BusConfig(object):
+    def __init__(self, config):
+        self.topic = config.get("bus.topic")
+        self.credentials_file_path = config.get("bus.credentials_file_path")
+
+
 class TasksConfig(object):
     def __init__(self, config):
         self.import_feeds = ImportFeedsTaskConfig(config)
+        self.run_scheduler = RunSchedulerConfig(config)
+        self.run_worker = RunWorkerConfig(config)
 
 
 class ImportFeedsTaskConfig(object):
     def __init__(self, config):
         self.truncate = config.get("tasks.import_feeds.truncate")
         self.feeds_file_path = config.get("tasks.import_feeds.feeds_file_path")
+
+
+class RunSchedulerConfig(object):
+    def __init__(self, config):
+        self.interval_seconds = config.get("tasks.run_scheduler.interval_seconds")
+
+
+class RunWorkerConfig(object):
+    def __init__(self, config):
+        self.interval_seconds = config.get("tasks.run_worker.interval_seconds")
