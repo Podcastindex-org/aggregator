@@ -46,7 +46,10 @@ Following commands will provision a local Docker cluster with a few auxiliary se
 1. `make up` - provision a Docker cluster. See [docker-compose.yml](docker/docker-compose.yaml) for more details. To list running containers run `docker ps -a`
 1. `make ensure-db` - creates database.
 1. `make import-feeds` - import sample feeds from [feeds.json](data/feeds.json) 
-1. `make run-scheduler`, `make run-worker` - scheduler submits feeds for processing, worker - parses RSS feeds. 
+1. `make run-scheduler` - submits feeds for processing
+    ![Running scheduler](docs/runnin_scheduler.gif "Running scheduler")
+1. `make run-worker` - parses RSS feeds.
+    ![Running worker](docs/running_worker.gif "Running worker") 
 1. `make down` - tear down local Docker cluster.
 
 ## Main entry points
