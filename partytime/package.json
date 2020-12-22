@@ -1,0 +1,26 @@
+{
+  "name": "partytime",
+  "version": "1.0.0",
+  "description": "Feed parser for podcastindex.org.",
+  "main": "partytime.js",
+  "dependencies": {
+    "graceful-fs": "^4.2.2",
+    "ini": "^1.3.3",
+    "mysql": "^2.5.5",
+    "request": "^2.53.0",
+    "iconv": "^2.3.0",
+    "fast-xml-parser": "^3.17.4",
+    "jschardet": "^2.2.1",
+    "he": "^1.2.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Dave Jones",
+  "license": "Apache",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Podcastindex-org/aggregator.git"
+  }
+}
