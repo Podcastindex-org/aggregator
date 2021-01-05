@@ -1,18 +1,22 @@
-//Requires
-var mysql = require('mysql');
-var request = require('request');
-var fs = require('graceful-fs');
-var ini = require('ini');
-var Iconv = require('iconv').Iconv;
-var crypto = require('crypto');
-var parser = require('fast-xml-parser');
-var jschardet = require("jschardet");
-var he = require("he");
+import mysql from 'mysql';
+import fs from 'graceful-fs';
+import ini from 'ini';
+import crypto from 'crypto';
+import parser from 'fast-xml-parser';
+import he from 'he';
+
+
+const paths = {
+    config: process.env.CONFIG || '/path/to/config/global.conf',
+    logs: process.env.LOGS || '/path/to/logs/',
+    feeds: process.env.FEEDS || '/path/to/feeds/',
+}
+
+const now = () => Math.floor(Date.now()/ 1000);
 
 //Globals
 var netcalls = 0;
 var dbcalls = 0;
-var dbcheck = 0;
 var checkall = false;
 var checkone = false;
 var checkerror = false;
@@ -21,41 +25,41 @@ var netwait = 240;
 var feedcount = 0;
 var force = false;
 var maxRowsToReturn = 300;
-var timestarted = Math.floor(new Date() / 1000);
+var timestarted = now();
 var stillWaitingForDB = true;
 var waitingForDBCount = 240;
 var feedWorkCount = 0;
 var totalItemsAdded = 0;
-var stmtPreCatmap = "INSERT INTO `nfcategories` (`feedid`, `catid1`, `catid2`, `catid3`, `catid4`, `catid5`, `catid6`, `catid7`, `catid8`, `catid9`, `catid10`) VALUES ";
-var stmtPostCatmap = " ON DUPLICATE KEY UPDATE catid1 = VALUES(catid1),catid2 = VALUES(catid2),catid3 = VALUES(catid3),catid4 = VALUES(catid4),catid5 = VALUES(catid5),catid6 = VALUES(catid6),catid7 = VALUES(catid7),catid8 = VALUES(catid8),catid9 = VALUES(catid9),catid10 = VALUES(catid10) ";
+const stmtPreCatmap = "INSERT INTO `nfcategories` (`feedid`, `catid1`, `catid2`, `catid3`, `catid4`, `catid5`, `catid6`, `catid7`, `catid8`, `catid9`, `catid10`) VALUES ";
+const stmtPostCatmap = " ON DUPLICATE KEY UPDATE catid1 = VALUES(catid1),catid2 = VALUES(catid2),catid3 = VALUES(catid3),catid4 = VALUES(catid4),catid5 = VALUES(catid5),catid6 = VALUES(catid6),catid7 = VALUES(catid7),catid8 = VALUES(catid8),catid9 = VALUES(catid9),catid10 = VALUES(catid10) ";
 var insertsCatmap = "";
-var stmtPrePubsub = "INSERT INTO `pubsub` (`feedid`, `hub_url`, `self_url`) VALUES ";
-var stmtPostPubsub = " ON DUPLICATE KEY UPDATE hub_url = VALUES(hub_url),self_url = VALUES(self_url) ";
+const stmtPrePubsub = "INSERT INTO `pubsub` (`feedid`, `hub_url`, `self_url`) VALUES ";
+const stmtPostPubsub = " ON DUPLICATE KEY UPDATE hub_url = VALUES(hub_url),self_url = VALUES(self_url) ";
 var insertsPubsub = "";
-var insertsPubsubBind = [];
-var stmtPreValue = "INSERT INTO `nfvalue` (`feedid`, `value_block`) VALUES ";
-var stmtPostValue = " ON DUPLICATE KEY UPDATE value_block = VALUES(value_block) ";
+var insertsPubsubBind: any[] = [];
+const stmtPreValue = "INSERT INTO `nfvalue` (`feedid`, `value_block`) VALUES ";
+const stmtPostValue = " ON DUPLICATE KEY UPDATE value_block = VALUES(value_block) ";
 var insertsValue = "";
-var insertsValueBind = [];
-var stmtPreChapters = "INSERT INTO `nfitem_chapters` (`itemid`, `url`, `type`) VALUES ";
-var stmtPostChapters = " ON DUPLICATE KEY UPDATE type = VALUES(type) ";
+var insertsValueBind: string[] = [];
+const stmtPreChapters = "INSERT INTO `nfitem_chapters` (`itemid`, `url`, `type`) VALUES ";
+const stmtPostChapters = " ON DUPLICATE KEY UPDATE type = VALUES(type) ";
 var insertsChapters = "";
-var insertsChaptersBind = [];
-var stmtPreTranscripts = "INSERT INTO `nfitem_transcripts` (`itemid`, `url`, `type`) VALUES ";
-var stmtPostTranscripts = " ON DUPLICATE KEY UPDATE type = VALUES(type) ";
+var insertsChaptersBind: any[] = [];
+const stmtPreTranscripts = "INSERT INTO `nfitem_transcripts` (`itemid`, `url`, `type`) VALUES ";
+const stmtPostTranscripts = " ON DUPLICATE KEY UPDATE type = VALUES(type) ";
 var insertsTranscripts = "";
-var insertsTranscriptsBind = [];
-var stmtPreFunding = "INSERT INTO `nffunding` (`feedid`, `url`, `message`) VALUES ";
-var stmtPostFunding = " ON DUPLICATE KEY UPDATE url = VALUES(url), message = VALUES(message) ";
+var insertsTranscriptsBind: any[] = [];
+const stmtPreFunding = "INSERT INTO `nffunding` (`feedid`, `url`, `message`) VALUES ";
+const stmtPostFunding = " ON DUPLICATE KEY UPDATE url = VALUES(url), message = VALUES(message) ";
 var insertsFunding = "";
-var insertsFundingBind = [];
-var stmtPreSoundbites = "INSERT INTO `nfitem_soundbites` (`itemid`, `title`, `start_time`, `duration`) VALUES ";
-var stmtPostSoundbites = " ON DUPLICATE KEY UPDATE title = VALUES(title) ";
+var insertsFundingBind: any[] = [];
+const stmtPreSoundbites = "INSERT INTO `nfitem_soundbites` (`itemid`, `title`, `start_time`, `duration`) VALUES ";
+const stmtPostSoundbites = " ON DUPLICATE KEY UPDATE title = VALUES(title) ";
 var insertsSoundbites = "";
-var insertsSoundbitesBind = [];
+var insertsSoundbitesBind: any[] = [];
 
 //Get command line args
-process.argv.forEach((val, index, array) => {
+process.argv.forEach((val, index, _array) => {
     console.log(index + ": [" + val + "]");
     if (index >= 2 && val === "checkall") {
         console.log("Checking all feeds.");
@@ -85,7 +89,7 @@ process.argv.forEach((val, index, array) => {
 });
 
 //Get the database and table info
-var config = ini.parse(fs.readFileSync('/path/to/config/global.conf', 'utf-8'));
+var config = ini.parse(fs.readFileSync(paths.config, 'utf-8'));
 
 //console.log(config.database);
 loggit(3, "DEBUG: It's party time!");
@@ -110,7 +114,7 @@ console.log("Done");
 
 //Assemble query
 //Get all of the rows marked as updated
-var query = 'SELECT ' +
+let query = 'SELECT ' +
     'feeds.id, ' +
     'feeds.title, ' +
     'feeds.url, ' +
@@ -129,7 +133,8 @@ var query = 'SELECT ' +
     'GROUP BY feeds.id ' +
     'ORDER BY feeds.parsenow DESC, feeds.lastcheck ASC ' +
     'LIMIT ' + maxRowsToReturn;
-if (checkone) {
+
+    if (checkone) {
     query = 'SELECT feeds.id, feeds.url, feeds.content, apple.itunes_id ' +
         'FROM ' + config.tables.cg_table_newsfeeds + ' AS feeds ' +
         'LEFT JOIN directory_apple AS apple ON feeds.url = apple.feed_url ' +
@@ -141,7 +146,7 @@ console.log("QUERY: [" + query + "]");
 
 //Pull the feed list
 dbcalls++;
-connection.query(query, function (err, rows, fields) {
+connection.query(query, function (err, rows, _fields) {
     stillWaitingForDB = false;
 
     //Bail on error
@@ -156,9 +161,8 @@ connection.query(query, function (err, rows, fields) {
     }
 
     //Iterate through all the returned feeds and parse each one's content to search for feed items and enclosures
-    for (var row in rows) {
-        var feed = rows[row];
-        var errorEncountered = false;
+    rows.map((feed: any) => {
+        let errorEncountered = false;
         feedcount++;
 
         console.log(feed.parsenow);
@@ -169,7 +173,7 @@ connection.query(query, function (err, rows, fields) {
         }
 
         //Set up fast-xml-parser
-        var options = {
+        let options = {
             attributeNamePrefix: "@_",
             attrNodeName: "attr", //default is 'false'
             textNodeName: "#text",
@@ -184,12 +188,12 @@ connection.query(query, function (err, rows, fields) {
             parseTrueNumberOnly: false,
             arrayMode: false, //"strict"
             //attrValueProcessor: (val, attrName) => he.decode(val, {isAttributeValue: true}),//default is a=>a
-            tagValueProcessor: (val, tagName) => he.decode(val), //default is a=>a
+            tagValueProcessor: (val: string, _tagName: any) => he.decode(val), //default is a=>a
             stopNodes: ["parse-me-as-string"]
         };
 
         //Create the initial feed object
-        var feedObj = {
+        let feedObj = {
             id: feed.id,
             itunesId: feed.itunes_id,
             url: feed.url,
@@ -207,7 +211,7 @@ connection.query(query, function (err, rows, fields) {
             podcastChapters: '',
             podcastLocked: 0,
             podcastOwner: feed.podcast_owner
-        };
+        } as any;
 
         //If the feed file didn't exist move on
         if (!feedFileExists(feed.id)) {
@@ -218,15 +222,15 @@ connection.query(query, function (err, rows, fields) {
                 if (result.affectedRows === 0) console.log("Error updating feed record for feed: [" + feed.url + "]");
                 dbcalls--;
             });
-            continue;
+            return;
         }
         feed.content = readFeedFile(feed.id);
         deleteFeedFile(feed.id);
 
 
-        var parsedContent = parser.validate(feed.content.trim());
+        let parsedContent = parser.validate(feed.content.trim());
         if (parsedContent === true) { //optional (it'll return an object in case it's not valid)
-            var theFeed = parser.parse(feed.content.trim(), options);
+            let theFeed = parser.parse(feed.content.trim(), options);
 
             if (checkone) {
                 //console.log(theFeed);
@@ -239,7 +243,7 @@ connection.query(query, function (err, rows, fields) {
                 if (typeof theFeed.rss.channel === "undefined") {
                     feed.type = 0;
                     markFeedAsUnparseable(feed);
-                    continue;
+                    return;
                 }
                 if (checkone) {
                     //console.log(theFeed.rss.channel.item);
@@ -273,7 +277,7 @@ connection.query(query, function (err, rows, fields) {
 
                 //Feed categories
                 if (Array.isArray(feedObj.itunesCategory)) {
-                    feedObj.itunesCategory.forEach(function (item, index, array) {
+                    feedObj.itunesCategory.forEach((item: any) => {
                         if (typeof item === "object" && typeof item.attr !== "undefined" && typeof item.attr['@_text'] === "string") {
                             feedObj.categories.push(item.attr['@_text'].toLowerCase().replace('&amp;', '').split(/[ ]+/));
 
@@ -433,7 +437,7 @@ connection.query(query, function (err, rows, fields) {
                     if (typeof theFeed.rss.channel['podcast:value']['podcast:valueRecipient'] === "object") {
                         let valueRecipients = theFeed.rss.channel['podcast:value']['podcast:valueRecipient'];
                         if (Array.isArray(valueRecipients)) {
-                            valueRecipients.forEach(function (item, index, array) {
+                            valueRecipients.forEach((item: any) => {
                                 if (typeof item.attr !== "undefined") {
                                     feedObj.value.destinations.push({
                                         'name': item.attr['@_name'],
@@ -483,7 +487,7 @@ connection.query(query, function (err, rows, fields) {
 
                 //Funding
                 if (typeof theFeed.rss.channel['podcast:funding'] === "object") {
-                    var fundingMessage = "";
+                    let fundingMessage = "";
                     if (typeof theFeed.rss.channel['podcast:funding']['#text'] === "string" && theFeed.rss.channel['podcast:funding']['#text'] !== "") {
                         fundingMessage = theFeed.rss.channel['podcast:funding']['#text'];
                     }
@@ -517,17 +521,17 @@ connection.query(query, function (err, rows, fields) {
                 if (typeof theFeed.rss.channel.item !== "undefined") {
                     //Make sure the item element is always an array
                     if (!Array.isArray(theFeed.rss.channel.item)) {
-                        var newItem = [];
+                        let newItem = [];
                         newItem[0] = theFeed.rss.channel.item;
                         theFeed.rss.channel.item = newItem;
                     }
 
                     //Items
-                    var i = 0;
+                    let i = 0;
                     feedObj.items = [];
-                    theFeed.rss.channel.item.forEach(function (item, index, array) {
+                    theFeed.rss.channel.item.forEach((item: any) => {
                         //console.log(item);
-                        var itemguid = "";
+                        let itemguid = "";
 
                         //If there is no enclosure, just skip this item and move on to the next
                         if (typeof item.enclosure !== "object") {
@@ -583,7 +587,7 @@ connection.query(query, function (err, rows, fields) {
                                 feedObj.items[i].link = feedObj.items[i].link['#text'];
                             }
                             if (typeof feedObj.items[i].link.attr !== "undefined") {
-                                if (typeof feedObj.items[i].link.attr['@_href'] === "string" || typeof feedObj.items[i].link.attr['@_href'] !== "") {
+                                if (typeof feedObj.items[i].link.attr['@_href'] === "string" && feedObj.items[i].link.attr['@_href'] !== "") {
                                     feedObj.items[i].link = feedObj.items[i].link.attr['@_href'];
                                 }
                             }
@@ -711,7 +715,7 @@ connection.query(query, function (err, rows, fields) {
                         //Soundbites
                         if (Array.isArray(item['podcast:soundbite'])) {
                             feedObj.items[i].podcastSoundbites = [];
-                            item['podcast:soundbite'].forEach(function (soundbite, index, array) {
+                            item['podcast:soundbite'].forEach(function (soundbite, _index, _array) {
                                 if (typeof soundbite !== "undefined" &&
                                     typeof soundbite.attr === "object" &&
                                     typeof soundbite.attr['@_startTime'] !== "undefined" &&
@@ -747,9 +751,9 @@ connection.query(query, function (err, rows, fields) {
                     });
 
                     //Get the pubdate of the most recent item
-                    var mostRecentPubDate = 0;
-                    feedObj.items.forEach(function (item, index, array) {
-                        var thisPubDate = pubDateToTimestamp(item.pubDate);
+                    let mostRecentPubDate = 0;
+                    feedObj.items.forEach((item: any) => {
+                        let thisPubDate = pubDateToTimestamp(item.pubDate);
                         if (thisPubDate > mostRecentPubDate && thisPubDate <= timestarted) {
                             mostRecentPubDate = thisPubDate;
                         }
@@ -758,9 +762,9 @@ connection.query(query, function (err, rows, fields) {
                     feedObj.newestItemPubDate = mostRecentPubDate;
 
                     //Get the pubdate of the oldest item
-                    var oldestPubDate = mostRecentPubDate;
-                    feedObj.items.forEach(function (item, index, array) {
-                        var thisPubDate = pubDateToTimestamp(item.pubDate);
+                    let oldestPubDate = mostRecentPubDate;
+                    feedObj.items.forEach((item: any) => {
+                        let thisPubDate = pubDateToTimestamp(item.pubDate);
                         if (thisPubDate < oldestPubDate && thisPubDate > 0) {
                             oldestPubDate = thisPubDate;
                         }
@@ -921,15 +925,15 @@ connection.query(query, function (err, rows, fields) {
                 if (typeof theFeed.feed.entry !== "undefined") {
                     //Make sure the item element is always an array
                     if (!Array.isArray(theFeed.feed.entry)) {
-                        var newItem = [];
+                        let newItem = [];
                         newItem[0] = theFeed.feed.entry;
                         theFeed.feed.entry = newItem;
                     }
 
                     //Items
-                    var i = 0;
+                    let i = 0;
                     feedObj.items = [];
-                    theFeed.feed.entry.forEach(function (item, index, array) {
+                    theFeed.feed.entry.forEach((item: any) => {
                         //console.log(item);
 
                         //Bail-out conditions
@@ -939,7 +943,7 @@ connection.query(query, function (err, rows, fields) {
                             return;
                         }
                         //No enclosures
-                        var enclosures = findAtomItemEnclosures(item);
+                        let enclosures = findAtomItemEnclosures(item);
                         if (!Array.isArray(enclosures) || enclosures.length === 0) {
                             return;
                         }
@@ -976,8 +980,8 @@ connection.query(query, function (err, rows, fields) {
                         feedObj.items[i].title = feedObj.items[i].title.trim();
 
                         //Item link
-                        var itemLinks = findAtomItemAlternateLinks(item);
-                        if (itemLinks.length > 0) {
+                        let itemLinks = findAtomItemAlternateLinks(item);
+                        if (itemLinks && itemLinks.length > 0) {
                             feedObj.items[i].link = itemLinks[0];
                         }
 
@@ -1037,9 +1041,9 @@ connection.query(query, function (err, rows, fields) {
                     });
 
                     //Get the pubdate of the most recent item
-                    var mostRecentPubDate = 0;
-                    feedObj.items.forEach(function (item, index, array) {
-                        var thisPubDate = pubDateToTimestamp(item.updated);
+                    let mostRecentPubDate = 0;
+                    feedObj.items.forEach((item: any) => {
+                        let thisPubDate = pubDateToTimestamp(item.updated);
                         if (thisPubDate > mostRecentPubDate && thisPubDate <= timestarted) {
                             mostRecentPubDate = thisPubDate;
                         }
@@ -1048,9 +1052,9 @@ connection.query(query, function (err, rows, fields) {
                     feedObj.newestItemPubDate = mostRecentPubDate;
 
                     //Get the pubdate of the oldest item
-                    var oldestPubDate = mostRecentPubDate;
-                    feedObj.items.forEach(function (item, index, array) {
-                        var thisPubDate = pubDateToTimestamp(item.updated);
+                    let oldestPubDate = mostRecentPubDate;
+                    feedObj.items.forEach((item: any) => {
+                        let thisPubDate = pubDateToTimestamp(item.updated);
                         if (thisPubDate < oldestPubDate && thisPubDate > 0) {
                             oldestPubDate = thisPubDate;
                         }
@@ -1083,7 +1087,7 @@ connection.query(query, function (err, rows, fields) {
             } else {
                 feed.type = 9;
                 markFeedAsUnparseable(feed);
-                continue;
+                return;
 
             }
 
@@ -1094,7 +1098,7 @@ connection.query(query, function (err, rows, fields) {
 
             //Create a hash from some key, stable info in the feed
             feedObj.itemUrlStrings = "";
-            feedHash = crypto.createHash('md5').update(
+            let feedHash = crypto.createHash('md5').update(
                 feedObj.title +
                 feedObj.link +
                 feedObj.language +
@@ -1122,8 +1126,8 @@ connection.query(query, function (err, rows, fields) {
 
                 //--------------------------------------------------------------------------
                 //-----------------ITEM PROCESSING INTO DB----------------------------------
-                feedObj.items.forEach(function (item, index, array) {
-                    var enclosureUrl = sanitizeUrl(item.enclosure.url);
+                feedObj.items.forEach((item: any) => {
+                    let enclosureUrl = sanitizeUrl(item.enclosure.url);
 
                     //Don't add an item if the enclosure url is not fully qualified
                     if (enclosureUrl.indexOf("http") !== 0) {
@@ -1139,7 +1143,7 @@ connection.query(query, function (err, rows, fields) {
                     feedObj.itemCount++;
 
                     //Assemble SQL
-                    var sqlItemInsert = 'INSERT INTO ' + config.tables.cg_table_newsfeed_items + ' (' +
+                    let sqlItemInsert = 'INSERT INTO ' + config.tables.cg_table_newsfeed_items + ' (' +
                         'feedid,' +
                         'title,' +
                         'link,' +
@@ -1158,7 +1162,7 @@ connection.query(query, function (err, rows, fields) {
                         '`purge`,' +
                         'image) ' +
                         'VALUES (?,?,?,?,?,?,UNIX_TIMESTAMP(now()),?,?,?,?,?,?,?,?,0,?)';
-                    var sqlItemBind = [
+                    let sqlItemBind = [
                         feedObj.id,
                         truncateString(item.title, 1024),
                         sanitizeUrl(item.link),
@@ -1229,7 +1233,7 @@ connection.query(query, function (err, rows, fields) {
 
                             //Soundbites
                             if (typeof item.podcastSoundbites === "object" && Array.isArray(item.podcastSoundbites)) {
-                                item.podcastSoundbites.forEach(function (soundbite, index, array) {
+                                item.podcastSoundbites.forEach(function (soundbite: { title: any; startTime: any; duration: any; }, _index: any, _array: any) {
                                     console.log(itemId + " - SOUNDBITE");
                                     insertsSoundbites += " (?,?,?,?),";
                                     insertsSoundbitesBind.push(itemId);
@@ -1285,7 +1289,7 @@ connection.query(query, function (err, rows, fields) {
                 }
 
                 //Set a decent timestamp for 'lastupdate' if one is set in the feedobj
-                lastupdate_clause = "";
+                let lastupdate_clause = "";
                 if (typeof feedObj.lastUpdate !== "undefined") {
                     console.log(feedObj.lastUpdate);
                     lastupdate_clause = 'lastupdate=' + feedObj.lastUpdate + ',';
@@ -1385,16 +1389,16 @@ connection.query(query, function (err, rows, fields) {
         feedWorkCount++;
         //DEBUG: Break here when testing
         //break;
-    }
+    })
 });
 dbcalls--;
 
 
 //Main logging function
-function loggit(lognum, message) {
+function loggit(lognum: number, message: string) {
     //Timestamp for this log
-    tstamp = new Date(Date.now()).toLocaleString();
-    var fd;
+    let tstamp = new Date(Date.now()).toLocaleString();
+    let fd;
 
     //Open the file
     switch (lognum) {
@@ -1402,25 +1406,25 @@ function loggit(lognum, message) {
             if (config.logging.log_errors_only == 1) {
                 return true;
             }
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_acclog, {'flags': 'a'});
+            fd = fs.createWriteStream(paths.logs + config.folders.cg_log + '/' + config.logging.cg_acclog, {'flags': 'a'});
             break;
         case 2:
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_errlog, {'flags': 'a'});
+            fd = fs.createWriteStream(paths.logs + config.folders.cg_log + '/' + config.logging.cg_errlog, {'flags': 'a'});
             break;
         case 3:
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_dbglog, {'flags': 'a'});
+            fd = fs.createWriteStream(paths.logs + config.folders.cg_log + '/' + config.logging.cg_dbglog, {'flags': 'a'});
             break;
     }
 
     //Write the message
-    fd.end("[" + tstamp + "] [LOCAL] (" + __filename + ") " + message + "\n");
+    fd?.end("[" + tstamp + "] [LOCAL] (" + __filename + ") " + message + "\n");
 
     //Return
     return true;
 }
 
 
-dbcheck = setInterval(function () {
+const dbcheck = setInterval(function () {
     console.log("--- Still: [" + dbcalls + "] database calls and: [" + netcalls + "] network requests. Feed count: [" + feedcount + "]. Netwait: [" + netwait + "].")
     if (stillWaitingForDB && waitingForDBCount == 0) {
         connection.end();
@@ -1439,9 +1443,9 @@ dbcheck = setInterval(function () {
                 insertsCatmap = insertsCatmap.slice(0, -1);
             }
             dbcalls++;
-            sqlStatement = stmtPreCatmap + insertsCatmap + stmtPostCatmap;
+            let sqlStatement = stmtPreCatmap + insertsCatmap + stmtPostCatmap;
             console.log(sqlStatement);
-            connection.query(sqlStatement, function (err, result) {
+            connection.query(sqlStatement, function (err, _result) {
                 if (err && err.code != 'ER_DUP_ENTRY') {
                     throw err;
                 }
@@ -1458,11 +1462,11 @@ dbcheck = setInterval(function () {
                 insertsPubsub = insertsPubsub.slice(0, -1);
             }
 
-            sqlStatementPS = stmtPrePubsub + insertsPubsub + stmtPostPubsub;
+            let sqlStatementPS = stmtPrePubsub + insertsPubsub + stmtPostPubsub;
             console.log(sqlStatementPS);
 
             dbcalls++;
-            connection.query(sqlStatementPS, insertsPubsubBind, function (err, result) {
+            connection.query(sqlStatementPS, insertsPubsubBind, function (err, _result) {
                 if (err && err.code != 'ER_DUP_ENTRY') {
                     throw err;
                 }
@@ -1479,11 +1483,11 @@ dbcheck = setInterval(function () {
                 insertsChapters = insertsChapters.slice(0, -1);
             }
 
-            sqlStatementChapters = stmtPreChapters + insertsChapters + stmtPostChapters;
+            let sqlStatementChapters = stmtPreChapters + insertsChapters + stmtPostChapters;
             console.log(sqlStatementChapters);
 
             dbcalls++;
-            connection.query(sqlStatementChapters, insertsChaptersBind, function (err, result) {
+            connection.query(sqlStatementChapters, insertsChaptersBind, function (err, _result) {
                 if (err && err.code != 'ER_DUP_ENTRY') {
                     throw err;
                 }
@@ -1500,11 +1504,11 @@ dbcheck = setInterval(function () {
                 insertsSoundbites = insertsSoundbites.slice(0, -1);
             }
 
-            sqlStatementSoundbites = stmtPreSoundbites + insertsSoundbites + stmtPostSoundbites;
+            let sqlStatementSoundbites = stmtPreSoundbites + insertsSoundbites + stmtPostSoundbites;
             console.log(sqlStatementSoundbites);
 
             dbcalls++;
-            connection.query(sqlStatementSoundbites, insertsSoundbitesBind, function (err, result) {
+            connection.query(sqlStatementSoundbites, insertsSoundbitesBind, function (err, _result) {
                 if (err && err.code != 'ER_DUP_ENTRY') {
                     throw err;
                 }
@@ -1522,11 +1526,11 @@ dbcheck = setInterval(function () {
                 insertsTranscripts = insertsTranscripts.slice(0, -1);
             }
 
-            sqlStatementTranscripts = stmtPreTranscripts + insertsTranscripts + stmtPostTranscripts;
+            let sqlStatementTranscripts = stmtPreTranscripts + insertsTranscripts + stmtPostTranscripts;
             console.log(sqlStatementTranscripts);
 
             dbcalls++;
-            connection.query(sqlStatementTranscripts, insertsTranscriptsBind, function (err, result) {
+            connection.query(sqlStatementTranscripts, insertsTranscriptsBind, function (err, _result) {
                 if (err && err.code != 'ER_DUP_ENTRY') {
                     throw err;
                 }
@@ -1543,11 +1547,11 @@ dbcheck = setInterval(function () {
                 insertsValue = insertsValue.slice(0, -1);
             }
 
-            sqlStatementValue = stmtPreValue + insertsValue + stmtPostValue;
+            let sqlStatementValue = stmtPreValue + insertsValue + stmtPostValue;
             console.log(sqlStatementValue);
 
             dbcalls++;
-            connection.query(sqlStatementValue, insertsValueBind, function (err, result) {
+            connection.query(sqlStatementValue, insertsValueBind, function (err, _result) {
                 if (err && err.code != 'ER_DUP_ENTRY') {
                     throw err;
                 }
@@ -1564,11 +1568,11 @@ dbcheck = setInterval(function () {
                 insertsFunding = insertsFunding.slice(0, -1);
             }
 
-            sqlStatementFunding = stmtPreFunding + insertsFunding + stmtPostFunding;
+            let sqlStatementFunding = stmtPreFunding + insertsFunding + stmtPostFunding;
             console.log(sqlStatementFunding);
 
             dbcalls++;
-            connection.query(sqlStatementFunding, insertsFundingBind, function (err, result) {
+            connection.query(sqlStatementFunding, insertsFundingBind, function (err, _result) {
                 if (err && err.code != 'ER_DUP_ENTRY') {
                     throw err;
                 }
@@ -1580,8 +1584,8 @@ dbcheck = setInterval(function () {
         }
 
         if (dbcalls === 0) {
-            console.log("Partytime finished running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + ((Math.floor(new Date() / 1000)) - timestarted) + "] seconds.");
-            loggit(3, "DEBUG: Partytime finished running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + ((Math.floor(new Date() / 1000)) - timestarted) + "] seconds.");
+            console.log("Partytime finished running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + (now() - timestarted) + "] seconds.");
+            loggit(3, "DEBUG: Partytime finished running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + (now() - timestarted) + "] seconds.");
             process.exit(0);
         }
 
@@ -1596,24 +1600,24 @@ dbcheck = setInterval(function () {
         // });
     }
     if (dbcalls === 0) {
-        loggit(3, "DEBUG: Partytime still running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + ((Math.floor(new Date() / 1000)) - timestarted) + "] seconds so far.");
+        loggit(3, "DEBUG: Partytime still running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + (now() - timestarted) + "] seconds so far.");
         netwait--;
     }
     if (dbcalls > 0) {
-        loggit(3, "DEBUG: Partytime still running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + ((Math.floor(new Date() / 1000)) - timestarted) + "] seconds so far.");
+        loggit(3, "DEBUG: Partytime still running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + (now() - timestarted) + "] seconds so far.");
         netwait = 30;
     }
 }, 5000);
 
 
 //RFC date convert to unix epoch
-function pubDateToTimestamp(pubDate) {
+function pubDateToTimestamp(pubDate: number | string) {
     if (typeof pubDate === "number") {
         return pubDate;
     }
 
-    var date = new Date(pubDate);
-    var pubDateParsed = Math.round(date.getTime() / 1000);
+    let date = new Date(pubDate);
+    let pubDateParsed = Math.round(date.getTime() / 1000);
 
     if (isNaN(pubDateParsed)) {
         return 0;
@@ -1624,7 +1628,7 @@ function pubDateToTimestamp(pubDate) {
 
 
 //Get a mime-type string for an unknown media enclosure
-function guessEnclosureType(url) {
+function guessEnclosureType(url: string) {
     if (url.indexOf('.m4v') != -1) {
         return "video/mp4";
     }
@@ -1654,19 +1658,19 @@ function guessEnclosureType(url) {
     }
 
     return "";
-};
+}
 
 
 //Parse out all of the links from an atom entry and see which ones are enclosures
-function findAtomItemEnclosures(entry) {
-    var enclosures = [];
+function findAtomItemEnclosures(entry: { link: any[]; }) {
+    let enclosures: {}[] = [];
 
     //Multiple link objects in an array?
     if (Array.isArray(entry.link)) {
 
-        var idx = 0;
-        entry.link.forEach(function (item, index, array) {
-            var enclosure = {};
+        let idx = 0;
+        entry.link.forEach((item: any) => {
+            let enclosure = {} as any;
 
             //console.log(item);
             if (typeof item.attr !== "object") return;
@@ -1710,8 +1714,8 @@ function findAtomItemEnclosures(entry) {
 
     //Just a straight object
     if (typeof entry.link === "object") {
-        var item = entry.link;
-        var enclosure = {};
+        let item = entry.link as any;
+        let enclosure = {} as any;
 
         //console.log(item);
 
@@ -1752,16 +1756,16 @@ function findAtomItemEnclosures(entry) {
 
 
 //Parse out all of the links from an atom entry and see which ones are WebSub links
-function findPubSubLinks(channel) {
-    var pubsublinks = {
+function findPubSubLinks(channel: { [x: string]: any[]; link: any[]; }) {
+    let pubsublinks = {
         hub: "",
         self: ""
     };
 
     //Multiple link objects in an array?
     if (Array.isArray(channel.link)) {
-        var idx = 0;
-        channel.link.forEach(function (item, index, array) {
+        let idx = 0;
+        channel.link.forEach((item: any) => {
 
             //console.log(item);
             if (typeof item.attr !== "object") return;
@@ -1792,8 +1796,8 @@ function findPubSubLinks(channel) {
 
     //Multiple link objects in an array?
     if (Array.isArray(channel['atom:link'])) {
-        var idx = 0;
-        channel['atom:link'].forEach(function (item, index, array) {
+        let idx = 0;
+        channel['atom:link'].forEach((item: any) => {
 
             //console.log(item);
             if (typeof item.attr !== "object") return;
@@ -1831,14 +1835,14 @@ function findPubSubLinks(channel) {
 
 
 //Parse out all of the links from an atom entry and see which ones are alternates
-function findAtomItemAlternateLinks(entry) {
-    var alternates = [];
+function findAtomItemAlternateLinks(entry: { link: any[]; }) {
+    let alternates: string[] = [];
 
     //Multiple link objects in an array?
     if (Array.isArray(entry.link)) {
 
-        var idx = 0;
-        entry.link.forEach(function (item, index, array) {
+        let idx = 0;
+        entry.link.forEach((item: any) => {
 
             //console.log(item);
             if (typeof item.attr !== "object") return;
@@ -1860,7 +1864,7 @@ function findAtomItemAlternateLinks(entry) {
 
     //Just a straight object
     if (typeof entry.link === "object") {
-        var item = entry.link;
+        let item = entry.link as any;
 
         //console.log(item);
         if (typeof item.attr !== "object") return;
@@ -1882,15 +1886,15 @@ function findAtomItemAlternateLinks(entry) {
 
 
 //Test for non-latin
-function containsNonLatinCodepoints(s) {
+function containsNonLatinCodepoints(s: string) {
     if (/[^\x00-\x80]/.test(s)) return true;
     return /[^\u0000-\u00ff]/.test(s);
 }
 
 
 //Make the url safe for storing
-function sanitizeUrl(url) {
-    var newUrl = "";
+function sanitizeUrl(url: string) {
+    let newUrl = "";
 
     if (typeof url !== "string") return "";
 
@@ -1912,7 +1916,7 @@ function sanitizeUrl(url) {
 
 
 //Reset a feed back to nothing
-function markFeedAsUnparseable(feed) {
+function markFeedAsUnparseable(feed: { id: string; url: string; type: any; itunesId: any; }) {
     dbcalls++;
     console.log("Marking feed: [" + feed.id + " | " + feed.url + "] as unparseable in the database.");
     connection.query('UPDATE ' + config.tables.cg_table_newsfeeds + ' SET ' +
@@ -1947,7 +1951,7 @@ function markFeedAsUnparseable(feed) {
 
 
 //DB Safety: Make sure a string isn't too long
-function truncateString(s, length) {
+function truncateString(s: string, length: number | undefined) {
     if (typeof s !== "string") return "";
     if (typeof s.substring !== "function") return "";
     return s.substring(0, length);
@@ -1955,8 +1959,8 @@ function truncateString(s, length) {
 
 
 //DB Safety: Make sure a number isn't out of range
-function truncateInt(number) {
-    var newNumber = parseInt(number);
+function truncateInt(number: any) {
+    let newNumber = parseInt(number);
     if (newNumber > 2147483647) {
         return 2147483647;
     }
@@ -1969,9 +1973,9 @@ function truncateInt(number) {
 
 
 //Read in the feed file
-function readFeedFile(feedId) {
+function readFeedFile(feedId: string) {
     try {
-        var data = fs.readFileSync('/path/to/feeds/' + feedId + '.txt', 'utf8');
+        let data = fs.readFileSync(paths.feeds + feedId + '.txt', 'utf8');
         return data;
     } catch (err) {
         console.error(err);
@@ -1981,9 +1985,9 @@ function readFeedFile(feedId) {
 
 
 //Delete a feed file
-function deleteFeedFile(feedId) {
+function deleteFeedFile(feedId: string) {
     try {
-        fs.unlinkSync('/path/to/feeds/' + feedId + '.txt');
+        fs.unlinkSync(paths.feeds + feedId + '.txt');
         return true;
     } catch (err) {
         console.error(err);
@@ -1993,14 +1997,14 @@ function deleteFeedFile(feedId) {
 
 
 //Does a feed file exist?
-function feedFileExists(feedId) {
-    return fs.existsSync('/path/to/feeds/' + feedId + '.txt');
+function feedFileExists(feedId: string) {
+    return fs.existsSync(paths.feeds + feedId + '.txt');
 }
 
 
 //Figure out the interval between two time stamps and return an int as an update frequency marker
-function calculateDays(newItemTime, oldItemTime) {
-    var diffSeconds = newItemTime - oldItemTime;
+function calculateDays(newItemTime: number, oldItemTime: number) {
+    let diffSeconds = newItemTime - oldItemTime;
 
     if (diffSeconds < 0) return 9;
     if (diffSeconds < 108000) return 1; //30 hours
@@ -2016,7 +2020,7 @@ function calculateDays(newItemTime, oldItemTime) {
 
 
 //Determine categories list and update the database to reflect
-function insertCategories(feedId, feedCategories) {
+function insertCategories(feedId: string, feedCategories: string[]) {
     //Static map of ids to save a db lookup (all lowercase)
     let catlookup = ['', 'arts', 'books', 'design', 'fashion', 'beauty', 'food', 'performing', 'visual', 'business', 'careers', 'entrepreneurship', 'investing',
         'management', 'marketing', 'nonprofit', 'comedy', 'interviews', 'improv', 'standup', 'education', 'courses', 'howto', 'language',
@@ -2028,8 +2032,8 @@ function insertCategories(feedId, feedCategories) {
         'travel', 'relationships', 'sports', 'baseball', 'basketball', 'cricket', 'fantasy', 'football', 'golf', 'hockey', 'rugby', 'running', 'soccer',
         'swimming', 'tennis', 'volleyball', 'wilderness', 'wrestling', 'technology', 'truecrime', 'tv', 'film', 'aftershows', 'reviews'];
     let max = 8;
-    var catCount = 0;
-    var arrCategories = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let catCount = 0;
+    let arrCategories = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
     //Do compound categories
     if (feedCategories.indexOf('video') > -1 && feedCategories.indexOf('games') > -1) {
@@ -2051,7 +2055,7 @@ function insertCategories(feedId, feedCategories) {
     //console.log(feedCategories);
 
     //Index lookup
-    feedCategories.forEach(function (item, index, array) {
+    feedCategories.forEach(function (item: string, index: number, _array: any) {
         if (index >= max) return;
 
         let cat = catlookup.indexOf(item.replace(' ', '').replace('-', ''));
@@ -2075,9 +2079,9 @@ function insertCategories(feedId, feedCategories) {
 * 01:02 = 62 seconds
 * Thanks to Glenn Bennett!
 */
-function timeToSeconds(timeString) {
-    var seconds = 0;
-    var a = timeString.split(':');
+function timeToSeconds(timeString: string) {
+    let seconds = 0;
+    let a = timeString.split(':');
 
     switch (a.length - 1) {
         case 1:
@@ -2090,7 +2094,7 @@ function timeToSeconds(timeString) {
 
         default:
             if (timeString != '')
-                seconds = timeString;
+                seconds = parseInt(timeString);
     }
 
     // Sometime we get an unparseable value which results in a Nan, in this case return
