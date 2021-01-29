@@ -1,24 +1,34 @@
 {
   "name": "partytime",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Feed parser for podcastindex.org.",
-  "main": "partytime.js",
+  "main": "src/partytime.ts",
   "dependencies": {
-    "graceful-fs": "^4.2.2",
-    "ini": "^1.3.3",
-    "mysql": "^2.5.5",
-    "request": "^2.53.0",
-    "iconv": "^2.3.0",
     "fast-xml-parser": "^3.17.4",
-    "jschardet": "^2.2.1",
-    "he": "^1.2.0"
+    "graceful-fs": "^4.2.2",
+    "he": "^1.2.0",
+    "ini": "^1.3.3",
+    "mysql": "^2.5.5"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "@types/graceful-fs": "^4.1.4",
+    "@types/he": "^1.1.1",
+    "@types/ini": "^1.3.30",
+    "@types/mysql": "^2.15.17",
+    "@types/node": "^14.14.20",
+    "ts-node": "^9.1.1",
+    "ts-node-dev": "^1.1.1",
+    "typescript": "^4.1.3"
+  },
   "scripts": {
+    "dev": "ts-node-dev --respawn --transpileOnly ./src/partytime.ts",
+    "build": "tsc",
+    "start": "node ./dist/partytime.js",
+    "debug": "tsc && node --inspect ./dist/partytime.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Dave Jones",
-  "license": "Apache",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/Podcastindex-org/aggregator.git"
