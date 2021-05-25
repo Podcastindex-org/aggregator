@@ -29,6 +29,7 @@ var timestarted = Math.floor(new Date() / 1000);
 var stillWaitingForDB = true;
 var waitingForDBCount = 12;
 var feedWorkCount = 0;
+var defaultConfigFilePath = './global.conf';
 
 //Get command line args
 process.argv.forEach((val, index, array) => {
@@ -61,7 +62,8 @@ process.argv.forEach((val, index, array) => {
 });
 
 //Get the database and table info
-var config = ini.parse(fs.readFileSync('/path/to/config/global.conf', 'utf-8'));
+var configFilePath = getConfigFilePath();
+var config = ini.parse(fs.readFileSync(configFilePath, 'utf-8'));
 
 //console.log(config.database);
 loggit(3, "DEBUG: Aggrivate is runnning.");
@@ -748,4 +750,15 @@ function writeFeedFile(feedId, content) {
 function countFeedFiles() {
     var files = fs.readdirSync(config.folders.feeds);
     return files.length;
+}
+
+function getConfigFilePath() {
+    const configArgumentNameIndex = process.argv.findIndex((val) => (val === '--config' || val === '-c'));
+    const configArgumentValueIndex = configArgumentNameIndex + 1;
+
+    if (configArgumentNameIndex >= 2 && process.argv.length > configArgumentValueIndex) {
+        return process.argv[configArgumentValueIndex];
+    }
+
+    return defaultConfigFilePath;
 }
