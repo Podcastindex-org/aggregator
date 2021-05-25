@@ -641,13 +641,13 @@ function loggit(lognum, message) {
             if (config.logging.log_errors_only == 1) {
                 return true;
             }
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_acclog, {'flags': 'a'});
+            fd = fs.createWriteStream(config.folders.cg_log + '/' + config.logging.cg_acclog, {'flags': 'a'});
             break;
         case 2:
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_errlog, {'flags': 'a'});
+            fd = fs.createWriteStream(config.folders.cg_log + '/' + config.logging.cg_errlog, {'flags': 'a'});
             break;
         case 3:
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_dbglog, {'flags': 'a'});
+            fd = fs.createWriteStream(config.folders.cg_log + '/' + config.logging.cg_dbglog, {'flags': 'a'});
             break;
     }
 
@@ -738,14 +738,14 @@ function stripNonUtf8(input) {
 
 //Writes the content of a feed to a file in the feeds dir
 function writeFeedFile(feedId, content) {
-    fs.writeFileSync('/path/to/feeds/' + feedId + '.tmp', content);
-    fs.renameSync('/path/to/feeds/' + feedId + '.tmp', '/path/to/feeds/' + feedId + '.txt')
+    fs.writeFileSync(config.folders.feeds + feedId + '.tmp', content);
+    fs.renameSync(config.folders.feeds + feedId + '.tmp', config.folders.feeds + feedId + '.txt')
 
     return true;
 }
 
 //Get a list of how many feed files are waiting to be parsed
 function countFeedFiles() {
-    var files = fs.readdirSync( '/path/to/feeds');
+    var files = fs.readdirSync(config.folders.feeds);
     return files.length;
 }
