@@ -6,6 +6,7 @@ const processHelper = require('./helpers/processHelper');
 const serverHelper = require('./helpers/serverHelper');
 const configHelper = require('./helpers/configHelper');
 const tmp = require('tmp');
+const process = require('process');
 
 jest.setTimeout(10000);
 const testConfigPath = path.join(__dirname, 'test.conf');
@@ -38,6 +39,13 @@ describe('Given a valid config file path', () => {
         testConfig.folders.cg_log = `${tmp.dirSync().name}/`;
         testConfig.folders.feeds = `${tmp.dirSync().name}/`;
         tmpConfigPath = 'integrationtest.conf';
+        testConfig.database = {
+            cg_dbhost: process.env.MYSQL_HOST,
+            cg_dbuser: process.env.MYSQL_USER,
+            cg_dbpass: process.env.MYSQL_PASSWORD,
+            cg_dbname: process.env.MYSQL_DATABASE,
+        };
+
         configHelper.writeConfigFile(tmpConfigPath, testConfig);
     });
 

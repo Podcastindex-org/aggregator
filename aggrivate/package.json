@@ -18,7 +18,8 @@
         "tmp": "^0.2.1"
     },
     "scripts": {
-        "test": "jest"
+        "test": "jest",
+        "test:ci": "jest --config ci.jest.config.js"
     },
     "author": "Dave Jones",
     "license": "Apache",

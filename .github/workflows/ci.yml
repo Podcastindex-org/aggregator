@@ -1,0 +1,44 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test-aggrivate:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_DATABASE: aggrivate_test
+          MYSQL_USER: aggrivate_test
+          MYSQL_PASSWORD: aggrivate_test
+          MYSQL_ROOT_PASSWORD: aggrivate_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+    defaults:
+      run:
+        working-directory: aggrivate
+    strategy:
+      matrix:
+        node-version: [14.x]
+    env:
+      MYSQL_DATABASE: aggrivate_test
+      MYSQL_USER: aggrivate_test
+      MYSQL_PASSWORD: aggrivate_test
+      MYSQL_HOST: 127.0.0.1
+    steps:
+    - uses: actions/checkout@v2
+    - name: Grant database privileges
+      run: mysql --host 127.0.0.1 --port 3306 -u root -paggrivate_test --execute "GRANT ALL ON *.* TO 'aggrivate_test'@'%' with grant option; FLUSH PRIVILEGES;"
+    - name: Setup Database
+      run: mysql --host 127.0.0.1 --port 3306 -u $MYSQL_USER -p$MYSQL_PASSWORD < "test/initdb.sql"; 
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v2
+      with:
+        node-version: ${{ matrix.node-version }}
+    - name: Install dependencies
+      run: npm ci
+    - run: npm run build --if-present
+    - name: Run tests
+      run: npm run test:ci
