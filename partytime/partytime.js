@@ -1182,6 +1182,7 @@ connection.query(query, function (err, rows, fields) {
                             "title = VALUES(title), " +
                             "link = VALUES(link), " +
                             "description = VALUES(description), " +
+                            "timestamp = VALUES(timestamp), " +
                             "enclosure_url = VALUES(enclosure_url), " +
                             "enclosure_length = VALUES(enclosure_length), " +
                             "enclosure_type = VALUES(enclosure_type), " +
