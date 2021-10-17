@@ -13,36 +13,48 @@ var he = require("he");
 var netcalls = 0;
 var dbcalls = 0;
 var dbcheck = 0;
+var query = 0;
 var checkall = false;
 var checkone = false;
+var checkdead = false;
 var checkerror = false;
 var ckoneurl = '';
 var netwait = 240;
 var feedcount = 0;
 var force = false;
 var maxRowsToReturn = 300;
+var maxContentLength = 25000000;
 var timestarted = Math.floor(new Date() / 1000);
+var time400DaysAgo = timestarted - (86400 * 400);
+var time200DaysAgo = timestarted - (86400 * 200);
+var time100DaysAgo = timestarted - (86400 * 100);
+var time70DaysAgo = timestarted - (86400 * 70);
+var time40DaysAgo = timestarted - (86400 * 40);
+var time20DaysAgo = timestarted - (86400 * 20);
+var time10DaysAgo = timestarted - (86400 * 10);
+var time5DaysAgo = timestarted - (86400 * 5);
 var stillWaitingForDB = true;
 var waitingForDBCount = 240;
 var feedWorkCount = 0;
 var totalItemsAdded = 0;
 var stmtPreCatmap = "INSERT INTO `nfcategories` (`feedid`, `catid1`, `catid2`, `catid3`, `catid4`, `catid5`, `catid6`, `catid7`, `catid8`, `catid9`, `catid10`) VALUES ";
 var stmtPostCatmap = " ON DUPLICATE KEY UPDATE catid1 = VALUES(catid1),catid2 = VALUES(catid2),catid3 = VALUES(catid3),catid4 = VALUES(catid4),catid5 = VALUES(catid5),catid6 = VALUES(catid6),catid7 = VALUES(catid7),catid8 = VALUES(catid8),catid9 = VALUES(catid9),catid10 = VALUES(catid10) ";
+var sqlStatementCatmap = "";
 var insertsCatmap = "";
 var stmtPrePubsub = "INSERT INTO `pubsub` (`feedid`, `hub_url`, `self_url`) VALUES ";
 var stmtPostPubsub = " ON DUPLICATE KEY UPDATE hub_url = VALUES(hub_url),self_url = VALUES(self_url) ";
 var insertsPubsub = "";
 var insertsPubsubBind = [];
-var stmtPreValue = "INSERT INTO `nfvalue` (`feedid`, `value_block`) VALUES ";
-var stmtPostValue = " ON DUPLICATE KEY UPDATE value_block = VALUES(value_block) ";
+var stmtPreValue = "INSERT INTO `nfvalue` (`feedid`, `value_block`, `type`, `createdon`) VALUES ";
+var stmtPostValue = " ON DUPLICATE KEY UPDATE value_block = VALUES(value_block), type = VALUES(type) ";
 var insertsValue = "";
 var insertsValueBind = [];
 var stmtPreChapters = "INSERT INTO `nfitem_chapters` (`itemid`, `url`, `type`) VALUES ";
-var stmtPostChapters = " ON DUPLICATE KEY UPDATE type = VALUES(type) ";
+var stmtPostChapters = " ON DUPLICATE KEY UPDATE url = VALUES(url), type = VALUES(type) ";
 var insertsChapters = "";
 var insertsChaptersBind = [];
 var stmtPreTranscripts = "INSERT INTO `nfitem_transcripts` (`itemid`, `url`, `type`) VALUES ";
-var stmtPostTranscripts = " ON DUPLICATE KEY UPDATE type = VALUES(type) ";
+var stmtPostTranscripts = " ON DUPLICATE KEY UPDATE url = VALUES(url), type = VALUES(type) ";
 var insertsTranscripts = "";
 var insertsTranscriptsBind = [];
 var stmtPreFunding = "INSERT INTO `nffunding` (`feedid`, `url`, `message`) VALUES ";
@@ -53,6 +65,19 @@ var stmtPreSoundbites = "INSERT INTO `nfitem_soundbites` (`itemid`, `title`, `st
 var stmtPostSoundbites = " ON DUPLICATE KEY UPDATE title = VALUES(title) ";
 var insertsSoundbites = "";
 var insertsSoundbitesBind = [];
+var stmtPrePersons = "INSERT INTO `nfitem_persons` (`itemid`, `name`, `role`, `grp`, `img`, `href`) VALUES ";
+var stmtPostPersons = " ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role), grp = VALUES(grp), img = VALUES(img), href = VALUES(href) ";
+var insertsPersons = "";
+var insertsPersonsBind = [];
+var stmtPreGUID = "INSERT INTO `nfguids` (`feedid`, `guid`) VALUES ";
+var stmtPostGUID = " ON DUPLICATE KEY UPDATE guid = VALUES(guid) ";
+var insertsGUID = "";
+var insertsGUIDBind = [];
+var stmtPreValueItem = "INSERT INTO `nfitem_value` (`itemid`, `value_block`, `type`, `createdon`) VALUES ";
+var stmtPostValueItem = " ON DUPLICATE KEY UPDATE value_block = VALUES(value_block), type = VALUES(type) ";
+var insertsValueItem = "";
+var insertsValueItemBind = [];
+
 
 //Get command line args
 process.argv.forEach((val, index, array) => {
@@ -107,9 +132,11 @@ connection.connect(function (err) {
 });
 console.log("Done");
 
+//Timestamp for one month ago
+var monthago = Math.floor((Date.now() / 1000) - (28 * 86400));
 
 //Assemble query
-//Get all of the rows marked as updated
+//Get all of the rows marked as updated, but make sure they have actual content
 var query = 'SELECT ' +
     'feeds.id, ' +
     'feeds.title, ' +
@@ -119,12 +146,16 @@ var query = 'SELECT ' +
     'feeds.update_frequency, ' +
     'feeds.podcast_owner, ' +
     'feeds.parsenow, ' +
-    'MIN(apple.itunes_id) AS itunes_id, ' +
-    'chash, ' +
-    'COUNT(nfitems.id) AS itemcount ' +
+    'MIN(apple.itunes_id) AS apple_itunes_id, ' +
+    'feeds.itunes_id AS itunes_id, ' +
+    'feeds.chash, ' +
+    'COUNT(nfitems.id) AS itemcount, ' +
+    'guids.guid AS podcastguid, ' +
+    'feeds.podcast_chapters AS item_content_hash ' +
     'FROM ' + config.tables.cg_table_newsfeeds + ' AS feeds ' +
     'LEFT JOIN directory_apple AS apple ON feeds.url = apple.feed_url ' +
     'LEFT JOIN nfitems AS nfitems ON feeds.id = nfitems.feedid ' +
+    'LEFT JOIN nfguids AS guids ON feeds.id = guids.feedid ' +
     'WHERE feeds.updated=' + config.partytime.cg_partytime_hostid + ' ' +
     'GROUP BY feeds.id ' +
     'ORDER BY feeds.parsenow DESC, feeds.lastcheck ASC ' +
@@ -159,6 +190,7 @@ connection.query(query, function (err, rows, fields) {
     for (var row in rows) {
         var feed = rows[row];
         var errorEncountered = false;
+        var feedUnparseable = false;
         feedcount++;
 
         console.log(feed.parsenow);
@@ -168,7 +200,6 @@ connection.query(query, function (err, rows, fields) {
             console.log('\x1b[33m%s\x1b[0m', 'PARSENOW: [' + feed.id + ' | ' + feed.url + ']');
         }
 
-        //Set up fast-xml-parser
         var options = {
             attributeNamePrefix: "@_",
             attrNodeName: "attr", //default is 'false'
@@ -183,15 +214,16 @@ connection.query(query, function (err, rows, fields) {
             //cdataPositionChar: "\\c",
             parseTrueNumberOnly: false,
             arrayMode: false, //"strict"
-            //attrValueProcessor: (val, attrName) => he.decode(val, {isAttributeValue: true}),//default is a=>a
+            attrValueProcessor: (val, attrName) => he.decode(val, {isAttributeValue: true}), //default is a=>a
             tagValueProcessor: (val, tagName) => he.decode(val), //default is a=>a
             stopNodes: ["parse-me-as-string"]
         };
 
-        //Create the initial feed object
+        //Create the feed object
         var feedObj = {
             id: feed.id,
             itunesId: feed.itunes_id,
+            podcastGuid: feed.podcastguid,
             url: feed.url,
             contentLength: feed.content.length,
             type: 0,
@@ -206,10 +238,19 @@ connection.query(query, function (err, rows, fields) {
             pubsub: false,
             podcastChapters: '',
             podcastLocked: 0,
-            podcastOwner: feed.podcast_owner
+            podcastOwner: feed.podcast_owner,
+            itemContent: null,
+            itemContentHash: feed.item_content_hash,
+            oldItemContentHash: feed.item_content_hash
         };
 
-        //If the feed file didn't exist move on
+        //Check itunes id
+        if( (typeof feed.apple_itunes_id === "number" && feed.apple_itunes_id > 0)
+            && (typeof feedObj.itunesId !== "number" || feedObj.itunesId === 0)) {
+            feedObj.itunesId = feed.apple_itunes_id;
+        }
+        console.log('\x1b[35m%s\x1b[0m', 'iTunesID: [' + feedObj.itunesId + ']');
+
         if (!feedFileExists(feed.id)) {
             console.log('Feed file: [' + feed.id + '.txt] does not exist for feed: [' + feed.url + ']. Reverting update flag.');
             dbcalls++;
@@ -222,19 +263,18 @@ connection.query(query, function (err, rows, fields) {
         }
         feed.content = readFeedFile(feed.id);
         deleteFeedFile(feed.id);
-
+        //console.log(feed.content);
 
         var parsedContent = parser.validate(feed.content.trim());
         if (parsedContent === true) { //optional (it'll return an object in case it's not valid)
             var theFeed = parser.parse(feed.content.trim(), options);
 
-            if (checkone) {
-                //console.log(theFeed);
+            if (checkone || feed.id == 3506553) {
+                console.log(theFeed);
             }
 
-
-            //RSS ----------------------------------------------------------------------------------------------------------------------------------
-            //--------------------------------------------------------------------------------------------------------------------------------------
+            //RSS -----------------------------------------------------------------------------------
+            //---------------------------------------------------------------------------------------
             if (typeof theFeed.rss === "object") {
                 if (typeof theFeed.rss.channel === "undefined") {
                     feed.type = 0;
@@ -264,12 +304,16 @@ connection.query(query, function (err, rows, fields) {
                 //Clean the title
                 if (typeof feedObj.title === "string") {
                     feedObj.title = feedObj.title.trim().replace(/(\r\n|\n|\r)/gm, "");
+                } else if (typeof feedObj.title === "number") {
+                    feedObj.title = feedObj.title.toString();
                 }
+
 
                 //Clean the link
                 if (typeof feedObj.link === "string") {
                     feedObj.link = feedObj.link.trim().replace(/(\r\n|\n|\r)/gm, "");
                 }
+
 
                 //Feed categories
                 if (Array.isArray(feedObj.itunesCategory)) {
@@ -294,6 +338,7 @@ connection.query(query, function (err, rows, fields) {
                     }
                 }
                 feedObj.categories = [...new Set(feedObj.categories.flat(9))];
+
 
                 //Feed owner/author
                 if (typeof theFeed.rss.channel['itunes:author'] !== "undefined") {
@@ -418,6 +463,19 @@ connection.query(query, function (err, rows, fields) {
                 }
 
                 //Value block
+                //If there are more than one, give priority to the lightning one
+                if (Array.isArray(theFeed.rss.channel['podcast:value'])) {
+                    var foundLightning = false;
+                    var foundIndex = 0;
+                    theFeed.rss.channel['podcast:value'].forEach(function (item, index, array) {
+                        if(typeof item.attr !== "undefined" && typeof item.attr['@_type'] === "string" && item.attr['@_type'] === "lightning") {
+                            foundIndex = index;
+                        }
+                    });
+                    theFeed.rss.channel['podcast:value'] = theFeed.rss.channel['podcast:value'][foundIndex];
+                }
+
+                //Now parse the value block
                 if (typeof theFeed.rss.channel['podcast:value'] !== "undefined" &&
                     typeof theFeed.rss.channel['podcast:value'].attr !== "undefined") {
                     console.log(theFeed.rss.channel['podcast:value']);
@@ -434,44 +492,77 @@ connection.query(query, function (err, rows, fields) {
                         let valueRecipients = theFeed.rss.channel['podcast:value']['podcast:valueRecipient'];
                         if (Array.isArray(valueRecipients)) {
                             valueRecipients.forEach(function (item, index, array) {
-                                if (typeof item.attr !== "undefined") {
-                                    feedObj.value.destinations.push({
-                                        'name': item.attr['@_name'],
-                                        'type': item.attr['@_type'],
-                                        'address': item.attr['@_address'],
-                                        'split': item.attr['@_split']
-                                    });
+                                if(typeof item.attr !== "undefined") {
+
+                                    var valueBlock = {};
+                                    if(typeof item.attr['@_name'] !== "undefined") valueBlock.name = item.attr['@_name'];
+                                    if(typeof item.attr['@_type'] !== "undefined") valueBlock.type = item.attr['@_type'];
+                                    if(typeof item.attr['@_address'] !== "undefined") valueBlock.address = item.attr['@_address'];
+                                    if(typeof item.attr['@_split'] !== "undefined") valueBlock.split = parseFloat(item.attr['@_split']);
+                                    if(typeof item.attr['@_customKey'] !== "undefined") valueBlock.customKey = item.attr['@_customKey'];
+                                    if(typeof item.attr['@_customValue'] !== "undefined") valueBlock.customValue = item.attr['@_customValue'];
+                                    if(typeof item.attr['@_fee'] === "string") {
+                                        if(item.attr['@_fee'].toLowerCase() === "true" || item.attr['@_fee'].toLowerCase() === "yes") {
+                                            valueBlock.fee = true;
+                                        }
+                                    }
+
+                                    feedObj.value.destinations.push(valueBlock);
                                 }
                             });
                         } else {
-                            if (typeof valueRecipients.attr !== "undefined") {
-                                feedObj.value.destinations.push({
-                                    'name': valueRecipients.attr['@_name'],
-                                    'type': valueRecipients.attr['@_type'],
-                                    'address': valueRecipients.attr['@_address'],
-                                    'split': valueRecipients.attr['@_split']
-                                });
+                            if(typeof valueRecipients.attr !== "undefined") {
+                                let item = valueRecipients;
+                                var valueBlock = {};
+                                if(typeof item.attr['@_name'] !== "undefined") valueBlock.name = item.attr['@_name'];
+                                if(typeof item.attr['@_type'] !== "undefined") valueBlock.type = item.attr['@_type'];
+                                if(typeof item.attr['@_address'] !== "undefined") valueBlock.address = item.attr['@_address'];
+                                if(typeof item.attr['@_split'] !== "undefined") valueBlock.split = parseFloat(item.attr['@_split']);
+                                if(typeof item.attr['@_customKey'] !== "undefined") valueBlock.customKey = item.attr['@_customKey'];
+                                if(typeof item.attr['@_customValue'] !== "undefined") valueBlock.customValue = item.attr['@_customValue'];
+                                if(typeof item.attr['@_fee'] === "string") {
+                                    if(item.attr['@_fee'].toLowerCase() === "true" || item.attr['@_fee'].toLowerCase() === "yes") {
+                                        valueBlock.fee = true;
+                                    }
+                                }
+
+                                feedObj.value.destinations.push(valueBlock);
                             }
                         }
                     }
 
+                    //Get value block type
+                    var thisValueBlockType = 0;
+                    if(typeof feedObj.value.model.type === "string" && feedObj.value.model.type === "HBD") {
+                        var thisValueBlockType = 1;
+                    }
+                    if(typeof feedObj.value.model.type === "string" && feedObj.value.model.type === "bitcoin") {
+                        var thisValueBlockType = 2;
+                    }
+
+
                     console.log(feedObj.value);
-                    insertsValue += " (?,?),";
+                    insertsValue += " (?,?,?,?),";
                     insertsValueBind.push(feedObj.id);
                     insertsValueBind.push(JSON.stringify(feedObj.value));
+                    insertsValueBind.push(thisValueBlockType);
+                    insertsValueBind.push(Math.floor(Date.now() / 1000));
                 }
 
                 //Locked?
                 if (typeof theFeed.rss.channel['podcast:locked'] === "object") {
-                    if (theFeed.rss.channel['podcast:locked']['#text'].trim().toLowerCase() === "yes" ||
-                        theFeed.rss.channel['podcast:locked']['#text'].trim().toLowerCase() === "true") {
+                    if (typeof theFeed.rss.channel['podcast:locked']['#text'] === "string" &&
+                        (theFeed.rss.channel['podcast:locked']['#text'].trim().toLowerCase() === "yes" ||
+                            theFeed.rss.channel['podcast:locked']['#text'].trim().toLowerCase() === "true")) {
                         feedObj.podcastLocked = 1;
                     }
-                    if (typeof theFeed.rss.channel['podcast:locked'].attr['@_owner'] === "string" &&
+                    if (typeof theFeed.rss.channel['podcast:locked'].attr !== "undefined" &&
+                        typeof theFeed.rss.channel['podcast:locked'].attr['@_owner'] === "string" &&
                         theFeed.rss.channel['podcast:locked'].attr['@_owner'] !== "") {
                         feedObj.podcastOwner = theFeed.rss.channel['podcast:locked'].attr['@_owner'];
                     }
-                    if (typeof theFeed.rss.channel['podcast:locked'].attr['@_email'] === "string" &&
+                    if (typeof theFeed.rss.channel['podcast:locked'].attr !== "undefined" &&
+                        typeof theFeed.rss.channel['podcast:locked'].attr['@_email'] === "string" &&
                         theFeed.rss.channel['podcast:locked'].attr['@_email'] !== "") {
                         feedObj.podcastOwner = theFeed.rss.channel['podcast:locked'].attr['@_email'];
                     }
@@ -480,14 +571,24 @@ connection.query(query, function (err, rows, fields) {
 
                     console.log('\x1b[33m%s\x1b[0m', 'LOCKED: ' + lockLog);
                 }
+                if(feedObj.podcastOwner == "" && feedObj.itunesOwnerEmail != "") {
+                    console.log('\x1b[33m%s\x1b[0m', feedObj.id + ' - OWNER EMAIL OVERRIDE: [' + feedObj.podcastOwner + '|' + feedObj.itunesOwnerEmail + ']');
+                    feedObj.podcastOwner = feedObj.itunesOwnerEmail;
+                }
 
                 //Funding
                 if (typeof theFeed.rss.channel['podcast:funding'] === "object") {
+                    if(Array.isArray(theFeed.rss.channel['podcast:funding'])) {
+                        theFeed.rss.channel['podcast:funding'] = theFeed.rss.channel['podcast:funding'][0];
+                    }
+
                     var fundingMessage = "";
-                    if (typeof theFeed.rss.channel['podcast:funding']['#text'] === "string" && theFeed.rss.channel['podcast:funding']['#text'] !== "") {
+                    if(typeof theFeed.rss.channel['podcast:funding']['#text'] === "string" &&
+                        theFeed.rss.channel['podcast:funding']['#text'] !== "") {
                         fundingMessage = theFeed.rss.channel['podcast:funding']['#text'];
                     }
-                    if (typeof theFeed.rss.channel['podcast:funding'].attr['@_url'] === "string" &&
+                    if (typeof theFeed.rss.channel['podcast:funding'].attr !== "undefined" &&
+                        typeof theFeed.rss.channel['podcast:funding'].attr['@_url'] === "string" &&
                         theFeed.rss.channel['podcast:funding'].attr['@_url'] !== "") {
                         feedObj.podcastFunding = {
                             message: fundingMessage,
@@ -495,12 +596,35 @@ connection.query(query, function (err, rows, fields) {
                         }
                     }
 
-                    console.log(feedObj.podcastFunding);
-                    insertsFunding += " (?,?,?),";
-                    insertsFundingBind.push(feedObj.id);
-                    insertsFundingBind.push(feedObj.podcastFunding.url);
-                    insertsFundingBind.push(feedObj.podcastFunding.message);
+                    if(typeof feedObj.podcastFunding === "object") {
+                        console.log(feedObj.podcastFunding);
+                        insertsFunding += " (?,?,?),";
+                        insertsFundingBind.push(feedObj.id);
+                        insertsFundingBind.push(feedObj.podcastFunding.url);
+                        insertsFundingBind.push(feedObj.podcastFunding.message);
+                    }
                 }
+
+                //GUID
+                if (typeof theFeed.rss.channel['podcast:guid'] === "object") {
+                    if (Array.isArray(theFeed.rss.channel['podcast:guid'])) {
+                        theFeed.rss.channel['podcast:guid'] = theFeed.rss.channel['podcast:guid'][0];
+                    }
+                }
+                if (typeof theFeed.rss.channel['podcast:guid'] === "string" && theFeed.rss.channel['podcast:guid'] !== "") {
+                    feedObj.podcastguid = theFeed.rss.channel['podcast:guid'];
+
+                    console.log('\x1b[34m%s\x1b[0m', 'GUID: ' + feedObj.podcastguid);
+
+                    if(typeof feedObj.podcastguid === "string") {
+                        console.log(feedObj.podcastguid);
+                        insertsGUID += " (?,?),";
+                        insertsGUIDBind.push(feedObj.id);
+                        insertsGUIDBind.push(feedObj.podcastguid);
+                    }
+                }
+
+
 
                 //Feed title
                 if (typeof feedObj.title !== "string") {
@@ -512,8 +636,8 @@ connection.query(query, function (err, rows, fields) {
 
                 //console.log("DEBUG: " + theFeed.rss.channel.item);
 
-                //------------------------------------------------------------------------
-                //Are there even any items to get
+                //ITEM PARSING! -------------------------------------------------------------------------
+                //---------------------------------------------------------------------------------------
                 if (typeof theFeed.rss.channel.item !== "undefined") {
                     //Make sure the item element is always an array
                     if (!Array.isArray(theFeed.rss.channel.item)) {
@@ -526,8 +650,10 @@ connection.query(query, function (err, rows, fields) {
                     var i = 0;
                     feedObj.items = [];
                     theFeed.rss.channel.item.forEach(function (item, index, array) {
-                        //console.log(item);
+
                         var itemguid = "";
+
+                        feedObj.itemCount++;
 
                         //If there is no enclosure, just skip this item and move on to the next
                         if (typeof item.enclosure !== "object") {
@@ -539,17 +665,30 @@ connection.query(query, function (err, rows, fields) {
                             item.enclosure = item.enclosure[0];
                         }
 
-                        //If there is no guid in the item, then skip this item and move on
-                        if (typeof item.guid !== "undefined") {
-                            itemguid = item.guid;
-                            if (typeof item.guid['#text'] === "string") {
-                                itemguid = item.guid['#text'];
-                            }
-                        }
-                        if (typeof itemguid !== "string" || itemguid === "") {
+                        //If the enclosure url is not present or sane, skip this item
+                        if (typeof item.enclosure.attr === "undefined" || typeof item.enclosure.attr['@_url'] !== "string" || item.enclosure.attr['@_url'].toLowerCase().indexOf('http') !== 0) {
                             return;
                         }
 
+                        //Get the GUID if there is one.  If not, use the enclosure url as the GUID.
+                        if (typeof item.guid !== "undefined") {
+                            itemguid = item.guid + '';
+                            if (typeof item.guid['#text'] === "string") {
+                                itemguid = item.guid['#text'];
+                            }
+                            if (typeof item.guid['#text'] === "number") {
+                                itemguid = item.guid['#text'].toString();
+                            }
+                        }
+                        if (typeof itemguid !== "string" || itemguid === "") {
+                            if (item.enclosure.attr['@_url'].length > 10) {
+                                itemguid = truncateString(item.enclosure.attr['@_url'], 738);
+                            } else {
+                                return;
+                            }
+                        }
+
+                        //Build the item object
                         feedObj.items[i] = {
                             title: item.title,
                             link: item.link,
@@ -564,18 +703,27 @@ connection.query(query, function (err, rows, fields) {
                             },
                             pubDate: pubDateToTimestamp(item.pubDate),
                             guid: itemguid,
-                            description: ""
+                            description: "",
+                            value: {}
+                        }
+                        feedObj.itemContent += feedObj.items[i].enclosure.url;
+
+                        if (feedObj.id == 950633) {
+                            console.log('\x1b[33m%s\x1b[0m', '  GUID: ' + feedObj.items[i].guid);
                         }
 
                         //Item title
                         if (typeof feedObj.items[i].title === "string") {
                             feedObj.items[i].title = feedObj.items[i].title.trim();
+                        } else if(typeof feedObj.items[i].title === "number") {
+                            feedObj.items[i].title = feedObj.items[i].title.toString();
                         } else {
                             feedObj.items[i].title = "";
                         }
                         if (typeof item['itunes:title'] !== "undefined" && item['itunes:title'] != "") {
                             feedObj.items[i].title = item['itunes:title'];
                         }
+                        feedObj.itemContent += feedObj.items[i].title;
 
                         //Item link
                         if (typeof feedObj.items[i].link === "object") {
@@ -591,6 +739,7 @@ connection.query(query, function (err, rows, fields) {
                         if (typeof feedObj.items[i].link !== "string") {
                             feedObj.items[i].link = "";
                         }
+                        feedObj.itemContent += feedObj.items[i].link;
 
                         //Item image
                         feedObj.items[i].itunesImage = "";
@@ -606,6 +755,7 @@ connection.query(query, function (err, rows, fields) {
                             feedObj.items[i].itunesImage = item['itunes:image'];
                         }
                         feedObj.items[i].itunesImage = sanitizeUrl(feedObj.items[i].itunesImage);
+                        feedObj.itemContent += feedObj.items[i].itunesImage;
                         feedObj.items[i].image = "";
                         if (typeof item.image !== "undefined" && typeof item.image.url === "string") {
                             feedObj.items[i].image = item.image.url;
@@ -614,6 +764,7 @@ connection.query(query, function (err, rows, fields) {
                             feedObj.items[i].image = feedObj.items[i].itunesImage;
                         }
                         feedObj.items[i].image = sanitizeUrl(feedObj.items[i].image);
+                        feedObj.itemContent += feedObj.items[i].image;
 
                         //Itunes specific stuff
                         if (typeof item['itunes:explicit'] === "string" &&
@@ -624,12 +775,12 @@ connection.query(query, function (err, rows, fields) {
                             feedObj.items[i].itunesExplicit = 1;
                         }
                         if (typeof item['itunes:duration'] !== "undefined") {
-                            if (typeof item['itunes:duration'] === "string") {
+                            if(typeof item['itunes:duration'] === "string") {
                                 feedObj.items[i].itunesDuration = timeToSeconds(item['itunes:duration']);
                                 if (isNaN(feedObj.items[i].itunesDuration)) {
                                     feedObj.items[i].itunesDuration = 0;
                                 }
-                            } else if (typeof item['itunes:duration'] === "number") {
+                            } else if(typeof item['itunes:duration'] === "number") {
                                 feedObj.items[i].itunesDuration = truncateInt(item['itunes:duration']);
                             }
 
@@ -684,20 +835,61 @@ connection.query(query, function (err, rows, fields) {
                         }
 
                         //Transcripts
-                        if (Array.isArray(item['podcast:transcript'])) {
-                            item['podcast:transcript'] = item['podcast:transcript'][0];
-                        }
-                        if (typeof item['podcast:transcript'] !== "undefined" &&
-                            typeof item['podcast:transcript'].attr === "object" &&
-                            typeof item['podcast:transcript'].attr['@_url'] === "string"
-                        ) {
-                            feedObj.items[i].podcastTranscripts = {
-                                url: item['podcast:transcript'].attr['@_url'],
-                                type: 0
+                        //-----------------------------------------------------------------
+                        if(Array.isArray(item['podcast:transcript'])) {
+                            feedObj.items[i].podcastTranscripts = [];
+                            item['podcast:transcript'].forEach(function (transcript, index, array) {
+                                if (typeof transcript !== "undefined" &&
+                                    typeof transcript.attr === "object" &&
+                                    typeof transcript.attr['@_url'] === "string" &&
+                                    typeof transcript.attr['@_type'] === "string"
+                                ) {
+                                    var transcriptType = 0;
+                                    if(transcript.attr['@_type'].indexOf("json") > -1) {
+                                        transcriptType = 1;
+                                    }
+                                    if(transcript.attr['@_type'].indexOf("srt") > -1) {
+                                        transcriptType = 2;
+                                    }
+                                    if(transcript.attr['@_type'].indexOf("vtt") > -1) {
+                                        transcriptType = 3;
+                                    }
+
+                                    feedObj.items[i].podcastTranscripts.push({
+                                        url: transcript.attr['@_url'],
+                                        type: transcriptType
+                                    });
+                                    feedObj.itemContent += transcript.attr['@_url'];
+                                }
+                            });
+                        } else {
+                            if (typeof item['podcast:transcript'] !== "undefined" &&
+                                typeof item['podcast:transcript'].attr === "object" &&
+                                typeof item['podcast:transcript'].attr['@_url'] === "string" &&
+                                typeof item['podcast:transcript'].attr['@_type'] === "string"
+                            ) {
+                                var transcriptType = 0;
+                                if(item['podcast:transcript'].attr['@_type'].indexOf("json") > -1) {
+                                    transcriptType = 1;
+                                }
+                                if(item['podcast:transcript'].attr['@_type'].indexOf("srt") > -1) {
+                                    transcriptType = 2;
+                                }
+                                if(item['podcast:transcript'].attr['@_type'].indexOf("vtt") > -1) {
+                                    transcriptType = 3;
+                                }
+
+                                feedObj.items[i].podcastTranscripts = {
+                                    url: item['podcast:transcript'].attr['@_url'],
+                                    type: transcriptType
+                                }
+                                feedObj.itemContent += item['podcast:transcript'].attr['@_url'];
                             }
                         }
 
+
                         //Chapters
+                        //-----------------------------------------------------------------
                         if (typeof item['podcast:chapters'] !== "undefined" &&
                             typeof item['podcast:chapters'].attr === "object" &&
                             typeof item['podcast:chapters'].attr['@_url'] === "string"
@@ -706,10 +898,12 @@ connection.query(query, function (err, rows, fields) {
                                 url: item['podcast:chapters'].attr['@_url'],
                                 type: 0
                             }
+                            feedObj.itemContent += item['podcast:chapters'].attr['@_url'];
                         }
 
                         //Soundbites
-                        if (Array.isArray(item['podcast:soundbite'])) {
+                        //-----------------------------------------------------------------
+                        if(Array.isArray(item['podcast:soundbite'])) {
                             feedObj.items[i].podcastSoundbites = [];
                             item['podcast:soundbite'].forEach(function (soundbite, index, array) {
                                 if (typeof soundbite !== "undefined" &&
@@ -722,8 +916,9 @@ connection.query(query, function (err, rows, fields) {
                                         duration: soundbite.attr['@_duration'],
                                         title: truncateString(soundbite['#text'], 500)
                                     });
-                                    console.log(soundbite);
-                                    console.log(feedObj.items[i].podcastSoundbites);
+                                    feedObj.itemContent += soundbite.attr['@_startTime'];
+                                    feedObj.itemContent += soundbite.attr['@_duration'];
+                                    feedObj.itemContent += truncateString(soundbite['#text'], 500);
                                 }
                             });
                         } else {
@@ -737,14 +932,182 @@ connection.query(query, function (err, rows, fields) {
                                     duration: item['podcast:soundbite'].attr['@_duration'],
                                     title: truncateString(item['podcast:soundbite']['#text'], 500)
                                 }
-                                console.log(item['podcast:soundbite']);
-                                console.log(feedObj.items[i].podcastSoundbites);
+                                feedObj.itemContent += item['podcast:soundbite'].attr['@_startTime'];
+                                feedObj.itemContent += item['podcast:soundbite'].attr['@_duration'];
+                                feedObj.itemContent += truncateString(item['podcast:soundbite']['#text'], 500);
                             }
+                        }
+
+                        //Persons
+                        //-----------------------------------------------------------------
+                        if(Array.isArray(item['podcast:person'])) {
+                            feedObj.items[i].podcastPersons = [];
+                            item['podcast:person'].forEach(function (person, index, array) {
+                                if (typeof person !== "undefined" &&
+                                    typeof person.attr === "object" &&
+                                    typeof person['#text'] !== "undefined"
+                                ) {
+                                    var personToAdd = {
+                                        name: truncateString(person['#text'], 128),
+                                        role: '',
+                                        group: '',
+                                        img: '',
+                                        href: ''
+                                    };
+                                    if(typeof person.attr['@_img'] === "string") {
+                                        personToAdd.img = truncateString(person.attr['@_img'], 768);
+                                        feedObj.itemContent += personToAdd.img;
+                                    }
+                                    if(typeof person.attr['@_href'] === "string") {
+                                        personToAdd.href = truncateString(person.attr['@_href'], 768);
+                                        feedObj.itemContent += personToAdd.href;
+                                    }
+                                    if(typeof person.attr['@_role'] === "string") {
+                                        personToAdd.role = truncateString(person.attr['@_role'].toLowerCase(), 128);
+                                        feedObj.itemContent += personToAdd.role;
+
+                                    }
+                                    if(typeof person.attr['@_group'] === "string") {
+                                        personToAdd.group = truncateString(person.attr['@_group'].toLowerCase(), 128);
+                                        feedObj.itemContent += personToAdd.group;
+
+                                    }
+
+                                    feedObj.items[i].podcastPersons.push(personToAdd);
+                                }
+                            });
+                        } else {
+                            if (typeof item['podcast:person'] !== "undefined" &&
+                                typeof item['podcast:person'].attr === "object" &&
+                                typeof item['podcast:person']['#text'] !== "undefined"
+                            ) {
+                                var person = item['podcast:person'];
+                                var personToAdd = {
+                                    name: truncateString(person['#text'], 128),
+                                    role: '',
+                                    group: '',
+                                    img: '',
+                                    href: ''
+                                };
+                                if(typeof person.attr['@_img'] === "string") {
+                                    personToAdd.img = truncateString(person.attr['@_img'], 768);
+                                    feedObj.itemContent += personToAdd.img;
+                                }
+                                if(typeof person.attr['@_href'] === "string") {
+                                    personToAdd.href = truncateString(person.attr['@_href'], 768);
+                                    feedObj.itemContent += personToAdd.href;
+                                }
+                                if(typeof person.attr['@_role'] === "string") {
+                                    personToAdd.role = truncateString(person.attr['@_role'].toLowerCase(), 128);
+                                    feedObj.itemContent += personToAdd.role;
+                                }
+                                if(typeof person.attr['@_group'] === "string") {
+                                    personToAdd.group = truncateString(person.attr['@_group'].toLowerCase(), 128);
+                                    feedObj.itemContent += personToAdd.group;
+                                }
+
+                                feedObj.items[i].podcastPersons = [];
+                                feedObj.items[i].podcastPersons.push(personToAdd);
+                            }
+                        }
+
+                        //Value block
+                        //If there are more than one, give priority to the lightning one
+                        if (Array.isArray(item['podcast:value'])) {
+                            var foundLightning = false;
+                            var foundIndex = 0;
+                            item['podcast:value'].forEach(function (block, index, array) {
+                                if(typeof block.attr !== "undefined" && typeof block.attr['@_type'] === "string" && block.attr['@_type'] === "lightning") {
+                                    foundIndex = index;
+                                }
+                            });
+                            item['podcast:value'] = item['podcast:value'][foundIndex];
+                        }
+                        //Now parse the value block
+                        if (typeof item['podcast:value'] !== "undefined" &&
+                            typeof item['podcast:value'].attr !== "undefined") {
+                            console.log(item['podcast:value']);
+                            //Get the model
+                            feedObj.items[i].value.model = {
+                                'type': item['podcast:value'].attr['@_type'],
+                                'method': item['podcast:value'].attr['@_method'],
+                                'suggested': item['podcast:value'].attr['@_suggested']
+                            }
+
+                            //Get the recipients
+                            feedObj.items[i].value.destinations = [];
+                            if (typeof item['podcast:value']['podcast:valueRecipient'] === "object") {
+                                let valueRecipients = item['podcast:value']['podcast:valueRecipient'];
+                                if (Array.isArray(valueRecipients)) {
+                                    valueRecipients.forEach(function (recp, index, array) {
+                                        if(typeof recp.attr !== "undefined") {
+
+                                            var valueBlock = {};
+                                            if(typeof recp.attr['@_name'] !== "undefined") valueBlock.name = recp.attr['@_name'];
+                                            if(typeof recp.attr['@_type'] !== "undefined") valueBlock.type = recp.attr['@_type'];
+                                            if(typeof recp.attr['@_address'] !== "undefined") valueBlock.address = recp.attr['@_address'];
+                                            if(typeof recp.attr['@_split'] !== "undefined") valueBlock.split = parseFloat(recp.attr['@_split']);
+                                            if(typeof recp.attr['@_customKey'] !== "undefined") valueBlock.customKey = recp.attr['@_customKey'];
+                                            if(typeof recp.attr['@_customValue'] !== "undefined") valueBlock.customValue = recp.attr['@_customValue'];
+                                            if(typeof recp.attr['@_fee'] === "string") {
+                                                if(recp.attr['@_fee'].toLowerCase() === "true" || recp.attr['@_fee'].toLowerCase() === "yes") {
+                                                    valueBlock.fee = true;
+                                                }
+                                            }
+
+                                            //Item content tracking
+                                            feedObj.itemContent += valueBlock.name;
+                                            feedObj.itemContent += valueBlock.type;
+                                            feedObj.itemContent += valueBlock.address;
+                                            feedObj.itemContent += valueBlock.split;
+                                            feedObj.itemContent += valueBlock.customKey;
+                                            feedObj.itemContent += valueBlock.customValue;
+                                            feedObj.itemContent += valueBlock.fee;
+
+                                            feedObj.items[i].value.destinations.push(valueBlock);
+                                        }
+                                    });
+                                } else {
+                                    if(typeof valueRecipients.attr !== "undefined") {
+                                        let recp = valueRecipients;
+                                        var valueBlock = {};
+                                        if(typeof recp.attr['@_name'] !== "undefined") valueBlock.name = recp.attr['@_name'];
+                                        if(typeof recp.attr['@_type'] !== "undefined") valueBlock.type = recp.attr['@_type'];
+                                        if(typeof recp.attr['@_address'] !== "undefined") valueBlock.address = recp.attr['@_address'];
+                                        if(typeof recp.attr['@_split'] !== "undefined") valueBlock.split = parseFloat(recp.attr['@_split']);
+                                        if(typeof recp.attr['@_customKey'] !== "undefined") valueBlock.customKey = recp.attr['@_customKey'];
+                                        if(typeof recp.attr['@_customValue'] !== "undefined") valueBlock.customValue = recp.attr['@_customValue'];
+                                        if(typeof recp.attr['@_fee'] === "string") {
+                                            if(recp.attr['@_fee'].toLowerCase() === "true" || recp.attr['@_fee'].toLowerCase() === "yes") {
+                                                valueBlock.fee = true;
+                                            }
+                                        }
+
+                                        //Item content tracking
+                                        feedObj.itemContent += valueBlock.name;
+                                        feedObj.itemContent += valueBlock.type;
+                                        feedObj.itemContent += valueBlock.address;
+                                        feedObj.itemContent += valueBlock.split;
+                                        feedObj.itemContent += valueBlock.customKey;
+                                        feedObj.itemContent += valueBlock.customValue;
+                                        feedObj.itemContent += valueBlock.fee;
+
+                                        feedObj.items[i].value.destinations.push(valueBlock);
+                                    }
+                                }
+                            }
+
                         }
 
 
                         i++;
                     });
+
+
+                    //DEBUG
+                    feedObj.itemContentHash = crypto.createHash('md5').update(feedObj.itemContent).digest("hex");
+                    console.log('\x1b[33m%s\x1b[0m', '  ITEMCONTENT: ' + feedObj.itemContentHash + ' | ' + feedObj.oldItemContentHash);
+
 
                     //Get the pubdate of the most recent item
                     var mostRecentPubDate = 0;
@@ -788,9 +1151,8 @@ connection.query(query, function (err, rows, fields) {
                     }
                 }
 
-
-            //ATOM ---------------------------------------------------------------------------------------------------------------------------------
-            //--------------------------------------------------------------------------------------------------------------------------------------
+                //ATOM ---------------------------------------------------------------------------------------------------------------------------------
+                //--------------------------------------------------------------------------------------------------------------------------------------
             } else if (typeof theFeed.feed === "object") {
                 feedObj.type = 1;
 
@@ -931,6 +1293,8 @@ connection.query(query, function (err, rows, fields) {
                     feedObj.items = [];
                     theFeed.feed.entry.forEach(function (item, index, array) {
                         //console.log(item);
+
+                        feedObj.itemCount++;
 
                         //Bail-out conditions
                         //-------------------
@@ -1082,6 +1446,7 @@ connection.query(query, function (err, rows, fields) {
                 //A format we don't support
             } else {
                 feed.type = 9;
+                console.log("NO CHANNEL OBJECT");
                 markFeedAsUnparseable(feed);
                 continue;
 
@@ -1092,8 +1457,19 @@ connection.query(query, function (err, rows, fields) {
                 //console.log(feedObj);
             }
 
-            //Create a hash from some key, stable info in the feed
+            //Get the last 15 characters of each item title, of the first 20 items, building a long string
+            //to then use as part of the identity hash
             feedObj.itemUrlStrings = "";
+            // feedObj.items.forEach(function (item, index, array) {
+            //     var itemTitle = truncateString(item.title, 15);
+            //     if (index < 20) {
+            //         if(itemTitle !== "") {
+            //             feedObj.itemUrlStrings = feedObj.itemUrlStrings + itemTitle;
+            //         }
+            //     }
+            // });
+
+            //Creat a hash from some key, stable info in the feed
             feedHash = crypto.createHash('md5').update(
                 feedObj.title +
                 feedObj.link +
@@ -1101,34 +1477,73 @@ connection.query(query, function (err, rows, fields) {
                 feedObj.generator +
                 feedObj.itunesAuthor +
                 feedObj.itunesOwnerName +
-                feedObj.itunesOwnerEmail +
-                feedObj.itemUrlStrings
+                feedObj.itunesOwnerEmail
             ).digest("hex");
 
-            //Add the items and enclosures we found if there was a newer feed item discovered, if the feed has zero items in the DB or if it's marked for immediate parse
+            if(feedObj.id == 312849 || feedObj.id == 1330254) {
+                console.log("["+feedHash+"]" + feedObj.title + "\n" +
+                    feedObj.link + "\n" +
+                    feedObj.language + "\n" +
+                    feedObj.generator + "\n" +
+                    feedObj.itunesAuthor + "\n" +
+                    feedObj.itunesOwnerName + "\n" +
+                    feedObj.itunesOwnerEmail + "\n" +
+                    feedObj.itemUrlStrings);
+
+            }
+
+            //Calculate an updateFrequency value
+            var itemTimes = [];
+            feedObj.items.forEach(function (item, index, array) {
+                if(typeof item.pubDate === "number") {
+                    itemTimes.push(item.pubDate);
+                } else {
+                    console.log('\x1b[33m%s\x1b[0m', '  UPDATE_FREQUENCY_ERROR[Bad Item pubDate]: ' + feedObj.updateFrequency);
+                }
+
+            });
+            feedObj.updateFrequency = calculateUpdateFrequency(itemTimes);
+            console.log('\x1b[33m%s\x1b[0m', '  UPDATE_FREQUENCY: ' + feedObj.updateFrequency);
+
+            //Add the items and enclosures we found if there was a newer feed item
+            //discovered
             if ((feedObj.newestItemPubDate != feedObj.lastItemUpdateTime) || feed.itemcount == 0 || feed.parsenow > 0) {
                 console.log('[' + feed.id + ' | ' + feed.title + ' | ' + feed.itemcount + '] Adding [' + feedObj.items.length + '] items...');
 
-                //Note: This doesn't work because async
                 //Purge all of the old items first
-                // dbcalls++;
-                // connection.query('UPDATE ' + config.tables.cg_table_newsfeed_items + ' SET `purge`='+config.partytime.cg_partytime_hostid+' WHERE feedid=?', [feed.id], function (err, result) {
-                //     if (err) throw err;
-                //     //console.log(result);
-                //
-                //     console.log("Done purging items.");
-                //     dbcalls--;
-                // });
+                if(feed.parsenow == 2) {
+                    dbcalls++;
+                    connection.query('UPDATE ' + config.tables.cg_table_newsfeed_items + ' SET `purge`='+config.partytime.cg_partytime_hostid+' WHERE feedid=?', [feed.id], function (err, result) {
+                        if (err) return reject(err);
+                        //console.log(result);
+
+                        console.log("Done purging items.");
+                        dbcalls--;
+                    });
+                }
 
                 //--------------------------------------------------------------------------
                 //-----------------ITEM PROCESSING INTO DB----------------------------------
+                feedObj.itemCount = 0;
                 feedObj.items.forEach(function (item, index, array) {
                     var enclosureUrl = sanitizeUrl(item.enclosure.url);
+                    if(enclosureUrl.toLowerCase().indexOf('&amp;') > -1) {
+                        enclosureUrl = enclosureUrl.replace(/\&amp\;/gi, '&');
+                    }
 
-                    //Don't add an item if the enclosure url is not fully qualified
+                    if(feedObj.id === 950633) {
+                        //console.log(item.guid);
+                    }
+
+                    //Don't add an item if the enclosure url is not valid
+                    //TODO: Is this the right way to handle?
                     if (enclosureUrl.indexOf("http") !== 0) {
+                        if(feedObj.id === 950633) {
+                            //console.log(index + ". skipped...")
+                        }
                         return;
                     }
+
 
                     if (item.itunesEpisode > 1000000) item.itunesEpisode = 1000000;
                     if (item.enclosure.length > 922337203685477580) item.enclosure.length = 0;
@@ -1176,13 +1591,13 @@ connection.query(query, function (err, rows, fields) {
                         item.image
                     ];
 
-                    //If the update flag was passed to the API then also overwrite existing items
-                    if (feed.parsenow == 2) {
+                    if(feed.parsenow == 2) {
                         sqlItemInsert = sqlItemInsert + " ON DUPLICATE KEY UPDATE " +
                             "title = VALUES(title), " +
                             "link = VALUES(link), " +
-                            "description = VALUES(description), " +
                             "timestamp = VALUES(timestamp), " +
+                            "timeadded = VALUES(timeadded), " +
+                            "description = VALUES(description), " +
                             "enclosure_url = VALUES(enclosure_url), " +
                             "enclosure_length = VALUES(enclosure_length), " +
                             "enclosure_type = VALUES(enclosure_type), " +
@@ -1194,6 +1609,9 @@ connection.query(query, function (err, rows, fields) {
                             "image = VALUES(image) ";
                     }
 
+                    if(feedObj.id === 950633) {
+                        //console.log(index + ". doing insert...")
+                    }
 
                     dbcalls++;
                     //console.log("Adding item: ["+item.title+"|"+item.enclosure.url+"] to the database.");
@@ -1212,6 +1630,19 @@ connection.query(query, function (err, rows, fields) {
 
                             //Transcripts
                             if (typeof item.podcastTranscripts !== "undefined") {
+                                console.log(">-----------------");
+                                console.log(item.podcastTranscripts);
+                                console.log(">-----------------");
+                            }
+                            if (typeof item.podcastTranscripts === "object" && Array.isArray(item.podcastTranscripts)) {
+                                item.podcastTranscripts.forEach(function(transcript, index, array) {
+                                    console.log(itemId + " - TRANSCRIPT");
+                                    insertsTranscripts += " (?,?,?),";
+                                    insertsTranscriptsBind.push(itemId);
+                                    insertsTranscriptsBind.push(transcript.url);
+                                    insertsTranscriptsBind.push(transcript.type);
+                                });
+                            } else if (typeof item.podcastTranscripts === "object") {
                                 console.log(itemId + " - TRANSCRIPT");
                                 insertsTranscripts += " (?,?,?),";
                                 insertsTranscriptsBind.push(itemId);
@@ -1229,8 +1660,13 @@ connection.query(query, function (err, rows, fields) {
                             }
 
                             //Soundbites
+                            if (typeof item.podcastSoundbites !== "undefined") {
+                                console.log(">-----------------");
+                                console.log(item.podcastSoundbites);
+                                console.log(">-----------------");
+                            }
                             if (typeof item.podcastSoundbites === "object" && Array.isArray(item.podcastSoundbites)) {
-                                item.podcastSoundbites.forEach(function (soundbite, index, array) {
+                                item.podcastSoundbites.forEach(function(soundbite, index, array) {
                                     console.log(itemId + " - SOUNDBITE");
                                     insertsSoundbites += " (?,?,?,?),";
                                     insertsSoundbitesBind.push(itemId);
@@ -1245,6 +1681,38 @@ connection.query(query, function (err, rows, fields) {
                                 insertsSoundbitesBind.push(item.podcastSoundbites.title);
                                 insertsSoundbitesBind.push(item.podcastSoundbites.startTime);
                                 insertsSoundbitesBind.push(item.podcastSoundbites.duration);
+                            }
+
+                            //Persons
+                            if (typeof item.podcastPersons === "object" && Array.isArray(item.podcastPersons)) {
+                                item.podcastPersons.forEach(function(person, index, array) {
+                                    console.log(itemId + " - PERSON");
+                                    insertsPersons += " (?,?,?,?,?,?),";
+                                    insertsPersonsBind.push(itemId);
+                                    insertsPersonsBind.push(person.name);
+                                    insertsPersonsBind.push(person.role);
+                                    insertsPersonsBind.push(person.group);
+                                    insertsPersonsBind.push(person.img);
+                                    insertsPersonsBind.push(person.href);
+                                });
+                            }
+
+                            //Value
+                            if(typeof item.value.model !== "undefined") {
+                                var thisValueBlockType = 0;
+                                if(typeof item.value.model.type === "string" && item.value.model.type === "HBD") {
+                                    var thisValueBlockType = 1;
+                                }
+                                if(typeof item.value.model.type === "string" && item.value.model.type === "bitcoin") {
+                                    var thisValueBlockType = 2;
+                                }
+
+                                console.log(itemId + " - VALUE");
+                                insertsValueItem += " (?,?,?,?),";
+                                insertsValueItemBind.push(itemId);
+                                insertsValueItemBind.push(JSON.stringify(item.value));
+                                insertsValueItemBind.push(thisValueBlockType);
+                                insertsValueItemBind.push(Math.floor(Date.now() / 1000));
                             }
                         }
                         dbcalls--;
@@ -1270,7 +1738,7 @@ connection.query(query, function (err, rows, fields) {
                 }
             }
 
-            //Debug
+
             if (ckoneurl) {
                 // console.log(theFeed);
                 // console.log(feedObj.image);
@@ -1280,15 +1748,15 @@ connection.query(query, function (err, rows, fields) {
 
             //Update the feed record with what we discovered
             if (!errorEncountered) {
-                if (feedObj.newestItemPubDate != feedObj.lastItemUpdateTime) {
-                    feedObj.updateFrequency = calculateDays(feedObj.newestItemPubDate, feedObj.lastItemUpdateTime);
-                    //console.log(feedObj.id + ' : ' + feedObj.newestItemPubDate + ' - ' + feedObj.lastItemUpdateTime);
-                }
+                // if (feedObj.newestItemPubDate != feedObj.lastItemUpdateTime) {
+                //     feedObj.updateFrequency = calculateDays(feedObj.newestItemPubDate, feedObj.lastItemUpdateTime);
+                //     //console.log(feedObj.id + ' : ' + feedObj.newestItemPubDate + ' - ' + feedObj.lastItemUpdateTime);
+                // }
 
                 //Set a decent timestamp for 'lastupdate' if one is set in the feedobj
                 lastupdate_clause = "";
                 if (typeof feedObj.lastUpdate !== "undefined") {
-                    console.log(feedObj.lastUpdate);
+                    console.log("lastUpdate: " + feedObj.lastUpdate);
                     lastupdate_clause = 'lastupdate=' + feedObj.lastUpdate + ',';
                 }
 
@@ -1312,6 +1780,7 @@ connection.query(query, function (err, rows, fields) {
                     'itunes_type=?,' +
                     'itunes_id=?,' +
                     'parse_errors=0,' +
+                    'errors=0,' +
                     'updated=0,' +
                     'lastparse=UNIX_TIMESTAMP(now()), ' +
                     'parsenow=0,' +
@@ -1321,6 +1790,7 @@ connection.query(query, function (err, rows, fields) {
                     'chash=?,' +
                     'oldest_item_pubdate=?,' +
                     'item_count=?,' +
+                    'podcast_chapters=?,' +
                     'podcast_locked=?,' +
                     'podcast_owner=? ' +
                     'WHERE id=?', [
@@ -1344,6 +1814,7 @@ connection.query(query, function (err, rows, fields) {
                     feedHash,
                     truncateInt(feedObj.oldestItemPubDate),
                     truncateInt(feedObj.itemCount),
+                    feedObj.itemContentHash,
                     feedObj.podcastLocked,
                     truncateString(feedObj.podcastOwner, 255),
                     feedObj.id
@@ -1357,7 +1828,7 @@ connection.query(query, function (err, rows, fields) {
             }
 
         } else {
-            //Error parsing feed
+            //error parsing feed
             console.log("Error parsing feed.");
             console.log(parsedContent);
             //process.exit(1);
@@ -1391,7 +1862,6 @@ connection.query(query, function (err, rows, fields) {
 dbcalls--;
 
 
-//Main logging function
 function loggit(lognum, message) {
     //Timestamp for this log
     tstamp = new Date(Date.now()).toLocaleString();
@@ -1403,13 +1873,13 @@ function loggit(lognum, message) {
             if (config.logging.log_errors_only == 1) {
                 return true;
             }
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_acclog, {'flags': 'a'});
+            fd = fs.createWriteStream(config.folders.cg_log + '/' + config.logging.cg_acclog, {'flags': 'a'});
             break;
         case 2:
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_errlog, {'flags': 'a'});
+            fd = fs.createWriteStream(config.folders.cg_log + '/' + config.logging.cg_errlog, {'flags': 'a'});
             break;
         case 3:
-            fd = fs.createWriteStream('/path/to/logs/' + config.folders.cg_log + '/' + config.logging.cg_dbglog, {'flags': 'a'});
+            fd = fs.createWriteStream(config.folders.cg_log + '/' + config.logging.cg_dbglog, {'flags': 'a'});
             break;
     }
 
@@ -1420,6 +1890,48 @@ function loggit(lognum, message) {
     return true;
 }
 
+function writeFile(filename, content) {
+    fd = fs.createWriteStream('/tmp' + filename, {'flags': 'a'});
+    fd.end(content);
+
+    return true;
+}
+
+function getParams(str) {
+    var params = str.split(';').reduce(function (params, param) {
+        var parts = param.split('=').map(function (part) {
+            return part.trim();
+        });
+        if (parts.length === 2) {
+            params[parts[0]] = parts[1];
+        }
+        return params;
+    }, {});
+    return params;
+}
+
+function maybeTranslate(content, charset) {
+    var iconv;
+    //console.log(charset);
+    // Use iconv if its not utf8 already.
+    if (!iconv && charset && !/utf-*8/i.test(charset)) {
+        try {
+            iconv = new Iconv(charset, 'utf-8');
+            console.log('Converting from charset %s to utf-8', charset);
+            iconv.on('error', function () {
+                console.log("Error translating with Iconv.");
+            });
+            // If we're using iconv, stream will be the output of iconv
+            // otherwise it will remain the output of request
+            return iconv.convert(new Buffer(content, 'binary')).toString('utf8')
+            //res = res.pipe(iconv);
+        } catch (err) {
+            //res.emit('error', err);
+            console.log("Error translating with Iconv. Err: " + err);
+        }
+    }
+    return content;
+}
 
 dbcheck = setInterval(function () {
     console.log("--- Still: [" + dbcalls + "] database calls and: [" + netcalls + "] network requests. Feed count: [" + feedcount + "]. Netwait: [" + netwait + "].")
@@ -1516,6 +2028,27 @@ dbcheck = setInterval(function () {
             });
         }
 
+        //Update the item persons table
+        if (insertsPersons != "") {
+            if (insertsPersons.substring(insertsPersons.length - 1) == ",") {
+                insertsPersons = insertsPersons.slice(0, -1);
+            }
+
+            sqlStatementPersons = stmtPrePersons + insertsPersons + stmtPostPersons;
+            console.log(sqlStatementPersons);
+
+            dbcalls++;
+            connection.query(sqlStatementPersons, insertsPersonsBind, function (err, result) {
+                if (err && err.code != 'ER_DUP_ENTRY') {
+                    throw err;
+                }
+
+                insertsPersons = "";
+
+                dbcalls--;
+            });
+        }
+
         //Update the item transcript table
         console.log(insertsTranscripts);
         if (insertsTranscripts != "") {
@@ -1533,6 +2066,27 @@ dbcheck = setInterval(function () {
                 }
 
                 insertsTranscripts = "";
+
+                dbcalls--;
+            });
+        }
+
+        //Update the ITEM value block if one existed
+        if (insertsValueItem != "") {
+            if (insertsValueItem.substring(insertsValueItem.length - 1) == ",") {
+                insertsValueItem = insertsValueItem.slice(0, -1);
+            }
+
+            sqlStatementValueItem = stmtPreValueItem + insertsValueItem + stmtPostValueItem;
+            console.log(sqlStatementValueItem);
+
+            dbcalls++;
+            connection.query(sqlStatementValueItem, insertsValueItemBind, function (err, result) {
+                if (err && err.code != 'ER_DUP_ENTRY') {
+                    throw err;
+                }
+
+                insertsValueItem = "";
 
                 dbcalls--;
             });
@@ -1580,13 +2134,33 @@ dbcheck = setInterval(function () {
             });
         }
 
+        //Update the GUID if one existed
+        if (insertsGUID != "") {
+            if (insertsGUID.substring(insertsGUID.length - 1) == ",") {
+                insertsGUID = insertsGUID.slice(0, -1);
+            }
+
+            sqlStatementGUID = stmtPreGUID + insertsGUID + stmtPostGUID;
+            console.log(sqlStatementGUID);
+
+            dbcalls++;
+            connection.query(sqlStatementGUID, insertsGUIDBind, function (err, result) {
+                if (err && err.code != 'ER_DUP_ENTRY') {
+                    throw err;
+                }
+
+                insertsGUID = "";
+
+                dbcalls--;
+            });
+        }
+
         if (dbcalls === 0) {
             console.log("Partytime finished running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + ((Math.floor(new Date() / 1000)) - timestarted) + "] seconds.");
             loggit(3, "DEBUG: Partytime finished running. Processed: [" + totalItemsAdded + "] items in: [" + feedWorkCount + "] feeds in: [" + ((Math.floor(new Date() / 1000)) - timestarted) + "] seconds.");
             process.exit(0);
         }
 
-        //Disabled: This depends on pre-marking feed items for removal
         //Now anything left over for this feed that still has purge set can be removed
         // dbcalls++;
         // connection.query('DELETE FROM ' + config.tables.cg_table_newsfeed_items + ' WHERE `purge`=?', [config.partytime.cg_partytime_hostid], function (err, result) {
@@ -1607,7 +2181,18 @@ dbcheck = setInterval(function () {
 }, 5000);
 
 
-//RFC date convert to unix epoch
+function iterate(obj, stack) {
+    for (var property in obj) {
+        if (obj.hasOwnProperty(property)) {
+            if (typeof obj[property] == "object") {
+                iterate(obj[property], stack + '.' + property);
+            } else {
+                console.log("[" + property + "]:  " + obj[property]);
+            }
+        }
+    }
+}
+
 function pubDateToTimestamp(pubDate) {
     if (typeof pubDate === "number") {
         return pubDate;
@@ -1622,7 +2207,6 @@ function pubDateToTimestamp(pubDate) {
 
     return pubDateParsed;
 }
-
 
 //Get a mime-type string for an unknown media enclosure
 function guessEnclosureType(url) {
@@ -1656,7 +2240,6 @@ function guessEnclosureType(url) {
 
     return "";
 };
-
 
 //Parse out all of the links from an atom entry and see which ones are enclosures
 function findAtomItemEnclosures(entry) {
@@ -1751,8 +2334,7 @@ function findAtomItemEnclosures(entry) {
     return enclosures;
 }
 
-
-//Parse out all of the links from an atom entry and see which ones are WebSub links
+//Parse out all of the links from an atom entry and see which ones are enclosures
 function findPubSubLinks(channel) {
     var pubsublinks = {
         hub: "",
@@ -1830,8 +2412,7 @@ function findPubSubLinks(channel) {
     return pubsublinks;
 }
 
-
-//Parse out all of the links from an atom entry and see which ones are alternates
+//Parse out all of the links from an atom entry and see which ones are enclosures
 function findAtomItemAlternateLinks(entry) {
     var alternates = [];
 
@@ -1881,15 +2462,11 @@ function findAtomItemAlternateLinks(entry) {
     return alternates;
 }
 
-
-//Test for non-latin
 function containsNonLatinCodepoints(s) {
     if (/[^\x00-\x80]/.test(s)) return true;
     return /[^\u0000-\u00ff]/.test(s);
 }
 
-
-//Make the url safe for storing
 function sanitizeUrl(url) {
     var newUrl = "";
 
@@ -1911,9 +2488,8 @@ function sanitizeUrl(url) {
     return newUrl;
 }
 
-
-//Reset a feed back to nothing
 function markFeedAsUnparseable(feed) {
+
     dbcalls++;
     console.log("Marking feed: [" + feed.id + " | " + feed.url + "] as unparseable in the database.");
     connection.query('UPDATE ' + config.tables.cg_table_newsfeeds + ' SET ' +
@@ -1946,16 +2522,12 @@ function markFeedAsUnparseable(feed) {
     return;
 }
 
-
-//DB Safety: Make sure a string isn't too long
 function truncateString(s, length) {
     if (typeof s !== "string") return "";
     if (typeof s.substring !== "function") return "";
     return s.substring(0, length);
 }
 
-
-//DB Safety: Make sure a number isn't out of range
 function truncateInt(number) {
     var newNumber = parseInt(number);
     if (newNumber > 2147483647) {
@@ -1968,11 +2540,9 @@ function truncateInt(number) {
     return newNumber;
 }
 
-
-//Read in the feed file
 function readFeedFile(feedId) {
     try {
-        var data = fs.readFileSync('/path/to/feeds/' + feedId + '.txt', 'utf8');
+        var data = fs.readFileSync(config.folders.cg_feeds + feedId + '.txt', 'utf8');
         return data;
     } catch (err) {
         console.error(err);
@@ -1980,11 +2550,9 @@ function readFeedFile(feedId) {
     }
 }
 
-
-//Delete a feed file
 function deleteFeedFile(feedId) {
     try {
-        fs.unlinkSync('/path/to/feeds/' + feedId + '.txt');
+        fs.unlinkSync(config.folders.cg_feeds + feedId + '.txt');
         return true;
     } catch (err) {
         console.error(err);
@@ -1992,14 +2560,10 @@ function deleteFeedFile(feedId) {
     }
 }
 
-
-//Does a feed file exist?
 function feedFileExists(feedId) {
-    return fs.existsSync('/path/to/feeds/' + feedId + '.txt');
+    return fs.existsSync(config.folders.cg_feeds + feedId + '.txt');
 }
 
-
-//Figure out the interval between two time stamps and return an int as an update frequency marker
 function calculateDays(newItemTime, oldItemTime) {
     var diffSeconds = newItemTime - oldItemTime;
 
@@ -2015,6 +2579,25 @@ function calculateDays(newItemTime, oldItemTime) {
     return 0;
 }
 
+function calculateUpdateFrequency(items) {
+
+    //Feeds that rarely update
+    if(items.filter(time => time > time400DaysAgo).length === 0) return 9;
+    if(items.filter(time => time > time200DaysAgo).length === 0) return 8;
+    if(items.filter(time => time > time100DaysAgo).length === 0) return 7;
+
+    //Frequency checks
+    if(items.filter(time => time > time5DaysAgo).length > 1) return 1;
+    if(items.filter(time => time > time10DaysAgo).length > 1) return 2;
+    if(items.filter(time => time > time20DaysAgo).length > 1) return 3;
+    if(items.filter(time => time > time40DaysAgo).length > 1) return 4;
+    if(items.filter(time => time > time100DaysAgo).length > 1) return 5;
+    if(items.filter(time => time > time200DaysAgo).length > 1) return 6;
+    if(items.filter(time => time > time400DaysAgo).length >= 1) return 7;
+
+    //Give up
+    return 0;
+}
 
 //Determine categories list and update the database to reflect
 function insertCategories(feedId, feedCategories) {
@@ -2027,7 +2610,8 @@ function insertCategories(feedId, feedCategories) {
         'buddhism', 'christianity', 'hinduism', 'islam', 'judaism', 'religion', 'spirituality', 'science', 'astronomy', 'chemistry', 'earth', 'life',
         'mathematics', 'natural', 'nature', 'physics', 'social', 'society', 'culture', 'documentary', 'personal', 'journals', 'philosophy', 'places',
         'travel', 'relationships', 'sports', 'baseball', 'basketball', 'cricket', 'fantasy', 'football', 'golf', 'hockey', 'rugby', 'running', 'soccer',
-        'swimming', 'tennis', 'volleyball', 'wilderness', 'wrestling', 'technology', 'truecrime', 'tv', 'film', 'aftershows', 'reviews'];
+        'swimming', 'tennis', 'volleyball', 'wilderness', 'wrestling', 'technology', 'truecrime', 'tv', 'film', 'aftershows', 'reviews', 'climate', 'weather',
+        'tabletop', 'role-playing', 'cryptocurrency'];
     let max = 8;
     var catCount = 0;
     var arrCategories = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -2065,11 +2649,9 @@ function insertCategories(feedId, feedCategories) {
 
     if (catCount > 0) {
         //console.log(arrCategories);
-        insertsCatmap += "(" + feedId + "," + arrCategories[1] + "," + arrCategories[2] + "," + arrCategories[3] + "," + arrCategories[4] + "," + arrCategories[5] + "," +
-            arrCategories[6] + "," + arrCategories[7] + "," + arrCategories[8] + "," + arrCategories[9] + "," + arrCategories[10] + "),";
+        insertsCatmap += "(" + feedId + "," + arrCategories[1] + "," + arrCategories[2] + "," + arrCategories[3] + "," + arrCategories[4] + "," + arrCategories[5] + "," + arrCategories[6] + "," + arrCategories[7] + "," + arrCategories[8] + "," + arrCategories[9] + "," + arrCategories[10] + "),";
     }
 }
-
 
 /*
 * Convert time string to seconds
@@ -2101,4 +2683,19 @@ function timeToSeconds(timeString) {
     }
 
     return seconds;
+}
+
+
+function flattenCategories(obj, cats) {
+
+    for (var property in obj) {
+        if (obj.hasOwnProperty(property)) {
+            if (typeof obj[property] == "object")
+                flattenCategories(obj[property], cats);
+            else if (typeof property === "string" && property === "@_text") {
+                cats.push(obj[property].toLowerCase());
+            }
+        }
+    }
+
 }
